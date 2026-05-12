@@ -1,15 +1,43 @@
-#ifndef CPU_H
-#define CPU_H
+#pragma once
+/*
+┌─────────────────────────────────────────────────────────────┐
+│ main() │
+│ │
+│ ┌─────────┐ ┌─────────┐ ┌─────────┐ │
+│ │ CPU │◄────►│ PPU │◄────►│ APU │ │
+│ └────┬────┘ └────┬────┘ └─────────┘ │
+│ │ │ │
+│ │ ┌──────┴──────┐ │
+│ └────────►│ Cartridge │◄───────────────────────── │
+│ └─────────────┘ │
+│ │
+│ CPU 持有 PPU 和 Cartridge 的指针 │
+│ PPU 持有 Cartridge 的指针 │
+└─────────────────────────────────────────────────────────────┘
 
+优点：
+
+无中央总线，耦合更低
+每个组件更独立
+符合 C 语言的风格
+*/
+// cpu.h - CPU 知道 PPU 和 Cartridge
 #include <stdint.h>
+#include "cart.h"
+#include "ppu.h"
 
-typedef struct {
-    uint8_t  a;    // 累加寄存器 Accumulator
-    uint8_t  x;    // 变址寄存器 Index Register X
-    uint8_t  y;    // 变址寄存器 Index Register Y
-    uint8_t  sp;   // 堆栈指针   Stack Pointer
-    uint8_t  p;    // 状态寄存器 Status Register
-    uint16_t pc;   // 程序计数器 Program Counter
-}CPU;
+typedef struct CPU {
+Cartridge cart; // 用于读取 PRG ROM
+PPU* ppu; // 用于访问 PPU 寄存器
+APU* apu; // 用于访问 APU 寄存器
 
-#endif //BEMU_CPU_H
+uint8_t ram[2048];    // CPU 内部 RAM
+
+// 寄存器
+uint8_t a, x, y, sp;
+uint16_t pc;
+uint8_t status;
+} CPU;
+
+void cpu_init(CPU* cpu, Cartridge* cart, PPU* ppu, APU* apu);
+void cpu_clock(CPU* cpu);
