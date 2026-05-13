@@ -3,7 +3,7 @@
 #include "mapper.h"
 
 typedef struct Mapper000 {
-	Mapper base; // 第一个成员是基类
+	Mapper base;
 } Mapper000;
 
 Mapper000* mapper_000_create(Cartridge* cart, uint8_t prg_banks, uint8_t chr_banks);
