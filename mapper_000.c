@@ -1,7 +1,7 @@
 #include "mapper_000.h"
 #include <stdlib.h>
 
-// ========== º¯ÊıÊµÏÖ ==========
+// ========== å‡½æ•°å®ç° ==========
 
 static bool cpu_read(void* self, uint16_t addr, uint32_t* mapped_addr, uint8_t* data) {
     Mapper000* m = (Mapper000*)self;
@@ -65,7 +65,7 @@ static void irq_clear(void* self) {
 static void scanline(void* self) {
 }
 
-// ========== vtable ¶¨Òå£¨¹²ÏíµÄ£© ==========
+// ========== vtable å®šä¹‰ï¼ˆå…±äº«çš„ï¼‰ ==========
 
 static const MapperVTable mapper_000_vtable = {
 .cpu_read = cpu_read,
@@ -79,16 +79,24 @@ static const MapperVTable mapper_000_vtable = {
 .scanline = scanline,
 };
 
-// ========== ¹¹Ôìº¯Êı ==========
+// ========== æ„é€ å‡½æ•° ==========
 
 Mapper000* mapper_000_create(Cartridge* cart, uint8_t prg_banks, uint8_t chr_banks) {
     Mapper000* m = (Mapper000*)malloc(sizeof(Mapper000));
     if (!m) return NULL;
 
-    // ÉèÖÃ¹²ÏíµÄ vtable
+    // è®¾ç½®å…±äº«çš„ vtable
     m->base.vtable = &mapper_000_vtable;
     m->base.cart = cart;
     m->base.prg_banks = prg_banks;
+    m->base.chr_banks = chr_banks;
+
+    return m;
+}
+
+void mapper_000_destroy(Mapper000* mapper) {
+    free(mapper);
+}
     m->base.chr_banks = chr_banks;
 
     return m;
