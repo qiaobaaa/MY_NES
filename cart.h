@@ -1,11 +1,14 @@
 #pragma once
 #include <stdint.h>
-// cartridge.h - Cartridge ÊÇÊı¾İ´æ´¢ÖĞĞÄ
+
+typedef struct Mapper Mapper;
+
+// cartridge.h - Cartridge æ˜¯æ•°æ®å­˜å‚¨ä¸­å¿ƒ
 typedef struct Cartridge {
 	Mapper* mapper;
 
-	uint8_t* prg_rom;     // PRG ROM Êı¾İ
-	uint8_t* chr_rom;     // CHR ROM Êı¾İ
+	uint8_t* prg_rom;     // PRG ROM æ•°æ®
+	uint8_t* chr_rom;     // CHR ROM æ•°æ®
 	uint8_t prg_banks;
 	uint8_t chr_banks;
 } Cartridge;
