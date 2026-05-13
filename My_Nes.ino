@@ -16,3 +16,21 @@ void loop() {
   // put your main code here, to run repeatedly:
 
 }
+
+#include "cartridge.h"
+#include "mapper_000.h"
+
+Cartridge cart;
+
+void setup() {
+  // put your setup code here, to run once:
+
+  Mapper* mapper = (Mapper*)mapper_000_create(&cart, 2, 1); 
+  mapper->prg_banks = 6;
+  mapper_000_destroy((Mapper000*)mapper);
+}
+
+void loop() {
+  // put your main code here, to run repeatedly:
+
+}
