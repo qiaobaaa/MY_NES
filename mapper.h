@@ -2,10 +2,10 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-// Ç°ÏòÉùÃ÷
+// å‰å‘å£°æ˜
 typedef struct Cartridge Cartridge;
 
-// ¾µÏñÄ£Ê½
+// é•œåƒæ¨¡å¼
 typedef enum {
 	MIRROR_HORIZONTAL,
 	MIRROR_VERTICAL,
@@ -14,40 +14,40 @@ typedef enum {
 	MIRROR_HARDWARE,
 } MirrorMode;
 
-// Mapper º¯ÊıÖ¸ÕëÀàĞÍ
-typedef bool (mapper_cpu_read_fn)(void mapper, uint16_t addr, uint32_t* mapped_addr, uint8_t* data);
-typedef bool (mapper_cpu_write_fn)(void mapper, uint16_t addr, uint32_t* mapped_addr, uint8_t data);
-typedef bool (mapper_ppu_read_fn)(void mapper, uint16_t addr, uint32_t* mapped_addr);
-typedef bool (mapper_ppu_write_fn)(void mapper, uint16_t addr, uint32_t* mapped_addr);
-typedef void (mapper_reset_fn)(void mapper);
-typedef MirrorMode(mapper_mirror_fn)(void mapper);
-typedef bool (mapper_irq_state_fn)(void mapper);
-typedef void (mapper_irq_clear_fn)(void mapper);
-typedef void (mapper_scanline_fn)(void mapper);
+// Mapper å‡½æ•°æŒ‡é’ˆç±»å‹
+typedef bool (mapper_cpu_read_fn)(void* mapper, uint16_t addr, uint32_t* mapped_addr, uint8_t* data);
+typedef bool (mapper_cpu_write_fn)(void* mapper, uint16_t addr, uint32_t* mapped_addr, uint8_t data);
+typedef bool (mapper_ppu_read_fn)(void* mapper, uint16_t addr, uint32_t* mapped_addr);
+typedef bool (mapper_ppu_write_fn)(void* mapper, uint16_t addr, uint32_t* mapped_addr);
+typedef void (mapper_reset_fn)(void* mapper);
+typedef MirrorMode(mapper_mirror_fn)(void* mapper);
+typedef bool (mapper_irq_state_fn)(void* mapper);
+typedef void (mapper_irq_clear_fn)(void* mapper);
+typedef void (mapper_scanline_fn)(void* mapper);
 
-// Ğéº¯Êı±í
+// è™šå‡½æ•°è¡¨
 typedef struct MapperVTable {
-	mapper_cpu_read_fn cpu_read;
-	mapper_cpu_write_fn cpu_write;
-	mapper_ppu_read_fn ppu_read;
-	mapper_ppu_write_fn ppu_write;
-	mapper_reset_fn reset;
-	mapper_mirror_fn mirror;
-	mapper_irq_state_fn irq_state;
-	mapper_irq_clear_fn irq_clear;
-	mapper_scanline_fn scanline;
+	mapper_cpu_read_fn* cpu_read;
+	mapper_cpu_write_fn* cpu_write;
+	mapper_ppu_read_fn* ppu_read;
+	mapper_ppu_write_fn* ppu_write;
+	mapper_reset_fn* reset;
+	mapper_mirror_fn* mirror;
+	mapper_irq_state_fn* irq_state;
+	mapper_irq_clear_fn* irq_clear;
+	mapper_scanline_fn* scanline;
 } MapperVTable;
 
-// »ù´¡ Mapper ½á¹¹Ìå
+// åŸºç¡€ Mapper ç»“æ„ä½“
 typedef struct Mapper {
-	const MapperVTable* vtable; // Ğéº¯Êı±íÖ¸Õë
+	const MapperVTable* vtable; // è™šå‡½æ•°è¡¨æŒ‡é’ˆ
 
-	Cartridge* cart;             // ³ÖÓĞ Cartridge ÒıÓÃ
-	uint8_t prg_banks;           // PRG ROM bank ÊıÁ¿
-	uint8_t chr_banks;           // CHR ROM bank ÊıÁ¿
+	Cartridge* cart;             // æŒæœ‰ Cartridge å¼•ç”¨
+	uint8_t prg_banks;           // PRG ROM bank æ•°é‡
+	uint8_t chr_banks;           // CHR ROM bank æ•°é‡
 } Mapper;
 
-// Í¨ÓÃº¯Êı£¨Í¨¹ı vtable µ÷ÓÃ£©
+// é€šç”¨å‡½æ•°ï¼ˆé€šè¿‡ vtable è°ƒç”¨ï¼‰
 static inline bool mapper_cpu_read(Mapper* mapper, uint16_t addr, uint32_t* mapped_addr, uint8_t* data) {
 	return mapper->vtable->cpu_read(mapper, addr, mapped_addr, data);
 }
