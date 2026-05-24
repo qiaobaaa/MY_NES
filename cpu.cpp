@@ -25,11 +25,11 @@ void cpu_debugger(CPU* cpu) {
   printf("P Status: %x\n", cpu->status);
   printf("PC: %x\n", cpu->pc);
   printf("\n");
-  printf("CPU CLOCK: %llu\n\n", cpu_clock());
+  //printf("CPU CLOCK: %llu\n\n", cpu_clock());
 }
 
 /* 初始化 CPU */
-void cpu_init(CPU cpu) {
+void cpu_init(CPU* cpu) {
   // http://wiki.nesdev.com/w/index.php/CPU_power_up_state
   cpu_cycles = 0;
   uint16_t i;
@@ -38,25 +38,25 @@ void cpu_init(CPU cpu) {
   cpu->y = 0;
   cpu->status = 0x24;
   cpu->sp = 0xfd;
-  memory_write_byte(0x4017, 0);  // frame irq enabled
-  memory_write_byte(0x4015, 0);  // all channels disabled
+  memory_write_byte(0x4017, 0, cpu);  // frame irq enabled
+  memory_write_byte(0x4015, 0, cpu);  // all channels disabled
   for (i = 0x4017; i <= 0x400f; i++) {
-    memory_write_byte(i, 0);
+    memory_write_byte(i, 0, cpu);
   }
 
-  cpu->pc = memory_read_word(0xfffc);
+  cpu->pc = memory_read_word(0xfffc, cpu);
 }
 
 /* CPU 复位 */
-void cpu_reset(CPU cpu) {
+void cpu_reset(CPU* cpu) {
   cpu->sp -= 3;
   cpu->status |= FLAG_INTERRUPT;
-  memory_write_byte(0x4015, 0);  // APU was silenced
-  cpu->pc = memory_read_word(0xfffc);
+  memory_write_byte(0x4015, 0, cpu);  // APU was silenced
+  cpu->pc = memory_read_word(0xfffc, cpu);
 }
 
 /* 检查并设置 Zero Flag 与 Negative Flag */
-void cpu_checknz(uint8_t n, CPU cpu) {
+void cpu_checknz(uint8_t n, CPU* cpu) {
   if ((n >> 7) & 1) {
     cpu->status |= FLAG_NEGATIVE;
   } else {
@@ -70,7 +70,7 @@ void cpu_checknz(uint8_t n, CPU cpu) {
 }
 
 /* 修改 Flags */
-void cpu_modify_flag(uint8_t flag, int value, CPU cpu) {
+void cpu_modify_flag(uint8_t flag, int value, CPU* cpu) {
   if (value) {
     cpu->status |= flag;
   } else {
@@ -79,21 +79,21 @@ void cpu_modify_flag(uint8_t flag, int value, CPU cpu) {
 }
 
 /* 栈操作 */
-void cpu_stack_push_byte(uint8_t data, CPU cpu) {
-  memory_write_byte(0x100 + cpu->sp, data);
+void cpu_stack_push_byte(uint8_t data, CPU* cpu) {
+  memory_write_byte(0x100 + cpu->sp, data, cpu);
   cpu->sp -= 1;
 }
 void cpu_stack_push_word(uint16_t data, CPU* cpu) {
-  memory_write_word(0x0ff + cpu->sp, data);
+  memory_write_word(0x0ff + cpu->sp, data, cpu);
   cpu->sp -= 2;
 }
 uint8_t cpu_stack_pop_byte(CPU* cpu) {
   cpu->sp += 1;
-  return memory_read_byte(0x100 + cpu->sp);
+  return memory_read_byte(0x100 + cpu->sp, cpu);
 }
 uint16_t cpu_stack_pop_word(CPU* cpu) {
   cpu->sp += 2;
-  return memory_read_word(0x0ff + cpu->sp);
+  return memory_read_word(0x0ff + cpu->sp, cpu);
 }
 
 /* CPU 寻址方式
@@ -131,8 +131,8 @@ void cpu_addressing_accumulator() {
 缩写: #v
 立即数寻址. 后面跟一个 8 位的立即数
 */
-void cpu_addressing_immediate(CPU cpu) {
-  op_value = memory_read_byte(cpu->pc);
+void cpu_addressing_immediate(CPU* cpu) {
+  op_value = memory_read_byte(cpu->pc, cpu);
   cpu->pc++;
   additional_cycles = 0;
 }
@@ -141,9 +141,9 @@ void cpu_addressing_immediate(CPU cpu) {
 缩写: d
 零页寻址. 地址 00 ~ FF 为零页地址
 */
-void cpu_addressing_zeropage(CPU cpu) {
-  op_address = memory_read_byte(cpu->pc);
-  op_value = memory_read_byte(op_address);
+void cpu_addressing_zeropage(CPU* cpu) {
+  op_address = memory_read_byte(cpu->pc, cpu);
+  op_value = memory_read_byte(op_address, cpu);
   cpu->pc++;
   additional_cycles = 0;
 }
@@ -152,9 +152,9 @@ void cpu_addressing_zeropage(CPU cpu) {
 缩写: d,x
 使用寄存器 X 的零页寻址. 在零页寻址的基础上, 地址与 X 中的值相加
 */
-void cpu_addressing_zeropage_x(CPU cpu) {
-  op_address = (memory_read_byte(cpu->pc) + cpu->x) & 0xff;
-  op_value = memory_read_byte(op_address);
+void cpu_addressing_zeropage_x(CPU* cpu) {
+  op_address = (memory_read_byte(cpu->pc, cpu) + cpu->x) & 0xff;
+  op_value = memory_read_byte(op_address, cpu);
   cpu->pc++;
   additional_cycles = 0;
 }
@@ -163,9 +163,9 @@ void cpu_addressing_zeropage_x(CPU cpu) {
 缩写: d,y
 使用寄存器 Y 的零页寻址. 在零页寻址的基础上, 地址与 Y 中的值相加
 */
-void cpu_addressing_zeropage_y(CPU cpu) {
-  op_address = (memory_read_byte(cpu->pc) + cpu->y) & 0xff;
-  op_value = memory_read_byte(op_address);
+void cpu_addressing_zeropage_y(CPU* cpu) {
+  op_address = (memory_read_byte(cpu->pc, cpu) + cpu->y) & 0xff;
+  op_value = memory_read_byte(op_address, cpu);
   cpu->pc++;
   additional_cycles = 0;
 }
@@ -174,9 +174,9 @@ void cpu_addressing_zeropage_y(CPU cpu) {
 缩写: a
 直接寻址. 操作数即为内存地址, 低位在前, 高位在后
 */
-void cpu_addressing_absolute(CPU cpu) {
-  op_address = memory_read_word(cpu->pc);
-  op_value = memory_read_byte(op_address);
+void cpu_addressing_absolute(CPU* cpu) {
+  op_address = memory_read_word(cpu->pc, cpu);
+  op_value = memory_read_byte(op_address, cpu);
   cpu->pc += 2;
   additional_cycles = 0;
 }
@@ -185,9 +185,9 @@ void cpu_addressing_absolute(CPU cpu) {
 缩写: a,x
 使用寄存器 X 的直接变址寻址. 16 位地址做为基地址, 与寄存器 X 的内容相加
 */
-void cpu_addressing_absolute_x(CPU cpu) {
-  op_address = memory_read_word(cpu->pc) + cpu->x;
-  op_value = memory_read_byte(op_address);
+void cpu_addressing_absolute_x(CPU* cpu) {
+  op_address = memory_read_word(cpu->pc, cpu) + cpu->x;
+  op_value = memory_read_byte(op_address, cpu);
   cpu->pc += 2;
   if ((op_address >> 8) != (cpu->pc >> 8)) {
     additional_cycles = 1;
@@ -200,10 +200,10 @@ void cpu_addressing_absolute_x(CPU cpu) {
 缩写: a,y
 使用寄存器 Y 的直接变址寻址. 16 位地址做为基地址, 与寄存器 Y 的内容相加
 */
-void cpu_addressing_absolute_y(CPU cpu) {
+void cpu_addressing_absolute_y(CPU* cpu) {
 
-  op_address = (memory_read_word(cpu->pc) + cpu->y) & 0xffff;
-  op_value = memory_read_byte(op_address);
+  op_address = (memory_read_word(cpu->pc, cpu) + cpu->y) & 0xffff;
+  op_value = memory_read_byte(op_address, cpu);
   cpu->pc += 2;
   if ((op_address >> 8) != (cpu->pc >> 8)) {
     additional_cycles = 1;
@@ -216,8 +216,8 @@ void cpu_addressing_absolute_y(CPU cpu) {
 缩写: label
 相对寻址. 用于条件转移指令. 指令第二字节为偏移量, 可正可负.
 */
-void cpu_addressing_relative(CPU cpu) {
-  op_address = memory_read_byte(cpu->pc);
+void cpu_addressing_relative(CPU* cpu) {
+  op_address = memory_read_byte(cpu->pc, cpu);
   cpu->pc++;
   if (op_address & 0x80) { op_address -= 0x100; }
   op_address += cpu->pc;
@@ -232,7 +232,7 @@ void cpu_addressing_relative(CPU cpu) {
 缩写: (a)
 间接寻址. 对应地址内存单元中的数做为地址.
 */
-void cpu_addressing_indirect(CPU cpu) {
+void cpu_addressing_indirect(CPU* cpu) {
   uint16_t arg_addr = memory_read_word(cpu->pc, cpu);
 
   /* 据说这是 6502 的 Bug */
@@ -251,7 +251,7 @@ void cpu_addressing_indirect(CPU cpu) {
 缩写: (d,x)
 先变址 X 后间接寻址. 以 X 做为变址, 与基地址相加, 然后间接寻址
 */
-void cpu_addressing_indirect_x(CPU cpu) {
+void cpu_addressing_indirect_x(CPU* cpu) {
   uint8_t arg_addr = memory_read_byte(cpu->pc, cpu);
   op_address = (memory_read_byte((arg_addr + cpu->x + 1) & 0xff, cpu) << 8) | memory_read_byte((arg_addr + cpu->x) & 0xff, cpu);
   op_value = memory_read_byte(op_address, cpu);
@@ -263,7 +263,7 @@ void cpu_addressing_indirect_x(CPU cpu) {
 缩写: (d),y
 后变址 Y 间接寻址. 对操作数中的零页地址先做一次间接寻址, 得到 16 位地址, 再与 Y 相加, 对相加后得到的地址进行直接寻址.
 */
-void cpu_addressing_indirect_y(CPU cpu) {
+void cpu_addressing_indirect_y(CPU* cpu) {
   uint8_t arg_addr = memory_read_byte(cpu->pc, cpu);
   op_address = (((memory_read_byte((arg_addr + 1) & 0xff, cpu) << 8) | memory_read_byte(arg_addr, cpu)) + cpu->y) & 0xffff;
   op_value = memory_read_byte(op_address, cpu);
@@ -892,7 +892,7 @@ void cpu_run(int cycles, CPU* cpu) {
         break;
       case 0x54:
         cpu_addressing_zeropage_x(cpu);
-        cpu_nop(cpu);
+        cpu_nop();
         cycles -= 1;
         break;
       case 0x55:
@@ -1479,7 +1479,7 @@ void cpu_run(int cycles, CPU* cpu) {
 }
 
 void cpu_interrupt(CPU* cpu) {
-  if (ppu_generate_nmi()) {
+  if (/*ppu_generate_nmi()*/ 1) {
     cpu->status |= FLAG_INTERRUPT;
     cpu_stack_push_word(cpu->pc, cpu);
     cpu_stack_push_byte(cpu->status, cpu);
