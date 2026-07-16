@@ -2,6 +2,7 @@
 #include "cpu.h"
 #include "memory.h"
 #include "stdio.h"
+#include "cartridge.h"
 
 uint64_t cpu_cycles;
 
@@ -29,7 +30,7 @@ void cpu_debugger(CPU* cpu) {
 }
 
 /* 初始化 CPU */
-void cpu_init(CPU* cpu) {
+void cpu_init(CPU* cpu, Cartridge* cart) {
   // http://wiki.nesdev.com/w/index.php/CPU_power_up_state
   cpu_cycles = 0;
   uint16_t i;
