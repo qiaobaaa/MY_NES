@@ -9,7 +9,7 @@
 //#include "mapper_000.h"
 
 // 前向声明
-//typedef struct Cartridge Cartridge;
+typedef struct Cartridge Cartridge;
 
 // 镜像模式
 typedef enum {
@@ -46,8 +46,7 @@ typedef struct MapperVTable {
 
 // 基础 Mapper 结构体
 typedef struct Mapper {
-	const MapperVTable* vtable; // 虚函数表指针
-
+	const MapperVTable* vtable; // 虚函数表指
 	Cartridge* cart;             // 持有 Cartridge 引用
 	uint8_t prg_banks;           // PRG ROM bank 数量
 	uint8_t chr_banks;           // CHR ROM bank 数量
@@ -84,10 +83,6 @@ static inline bool mapper_irq_state(Mapper* mapper) {
 
 static inline void mapper_irq_clear(Mapper* mapper) {
 	mapper->vtable->irq_clear(mapper);
-}
-
-static inline void mapper_scanline(Mapper* mapper) {
-	mapper->vtable->scanline(mapper);
 }
 
 static inline void mapper_scanline(Mapper* mapper) {
