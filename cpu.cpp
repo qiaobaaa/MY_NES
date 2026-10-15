@@ -79,78 +79,120 @@ void cpu_reset() {
     cpu.pc = memory_read_word(0xfffc);
 }
 
+static inline void cpu_checknz(uint8_t n)
+{
+    if((n >> 7) & 1) { cpu.p |= FLAG_NEGATIVE; } else { cpu.p &= ~FLAG_NEGATIVE; }
+    if(n == 0)       { cpu.p |= FLAG_ZERO; }     else { cpu.p &= ~FLAG_ZERO; }
+}
+
+static inline void cpu_modify_flag(uint8_t flag, int value) {
+    if(value) { cpu.p |= flag; }
+    else      { cpu.p &= ~flag; }
+}
 /* 检查并设置 Zero Flag 与 Negative Flag */
 /*
-void cpu_checknz(uint8_t n)
+static inline void cpu_checknz(uint8_t n)
 {
     if((n >> 7) & 1) { cpu.p |= FLAG_NEGATIVE; } else { cpu.p &= ~FLAG_NEGATIVE; }
     if(n == 0)       { cpu.p |= FLAG_ZERO; }     else { cpu.p &= ~FLAG_ZERO; }
 }
 */
+/* 检查并设置 Zero Flag 与 Negative Flag */
 
-static inline void cpu_checknz(uint8_t n) {  
+/*
+static inline __attribute__((always_inline)) void cpu_checknz(uint8_t n) {
     // 优化：消除 if/else  
     // Negative Flag: 检查 bit 7  
-    cpu.p = (cpu.p & ~FLAG_NEGATIVE) | ((n & 0x80) ? FLAG_NEGATIVE : 0);  
+    cpu.p = (cpu.p & ~FLAG_NEGATIVE) | ((n & 0x80) ? FLAG_NEGATIVE : 0);
     // Zero Flag: n == 0 ? 1 : 0  
-    cpu.p = (cpu.p & ~FLAG_ZERO) | ((n == 0) ? FLAG_ZERO : 0);  
+    cpu.p = (cpu.p & ~FLAG_ZERO) | ((n == 0) ? FLAG_ZERO : 0);
 }
-
-/* 修改 Flags */
-/*
-void cpu_modify_flag(uint8_t flag, int value) {
-    if(value) { cpu.p |= flag; }
-    else      { cpu.p &= ~flag; }
-}
-*/
-
-static inline void cpu_modify_flag(uint8_t flag, int value) {  
+static inline __attribute__((always_inline)) void cpu_modify_flag(uint8_t flag, int value) {
     // 优化：消除 if/else，使用掩码直接操作  
     // value 为 1 则设置，为 0 则清除  
-    cpu.p = (cpu.p & ~flag) | (value ? flag : 0);  
+    cpu.p = (cpu.p & ~flag) | (value ? flag : 0);
+}
+*/
+/*
+static inline void cpu_checknz(uint8_t n) {
+    // 优化：消除 if/else  
+    // Negative Flag: 检查 bit 7  
+    cpu.p = (cpu.p & ~FLAG_NEGATIVE) | ((n & 0x80) ? FLAG_NEGATIVE : 0);
+    // Zero Flag: n == 0 ? 1 : 0  
+    cpu.p = (cpu.p & ~FLAG_ZERO) | ((n == 0) ? FLAG_ZERO : 0);
 }
 
+static inline  void cpu_modify_flag(uint8_t flag, int value) {
+    // 优化：消除 if/else，使用掩码直接操作  
+    // value 为 1 则设置，为 0 则清除  
+    cpu.p = (cpu.p & ~flag) | (value ? flag : 0);
+}
+*/
+//注：在 ESP32-P4 (RISC-V 架构) 上，条件分支（Branch）的代价较高，尽量使用位掩码。
+//虽然去掉了 if/else 块，但 ? : 三元运算符在某些编译器环境下依然会生成条件分支指令（Branch）。为了绝对的“无分支（Branchless）”，你可以尝试：
+/*
+static inline void cpu_checknz(uint8_t n) {
+    // 使用位运算直接计算，完全避免三元运算符或分支  
+    uint8_t nz = 0;
+    nz |= (n & 0x80) ? FLAG_NEGATIVE : 0;
+    nz |= (n == 0) ? FLAG_ZERO : 0;
+    cpu.p = (cpu.p & ~(FLAG_NEGATIVE | FLAG_ZERO)) | nz;
+}
+*/
+/*
+static inline void cpu_checknz(uint8_t n) {
+    // n & 0x80 得到 0x80 或 0，直接按位或进去  
+    // (n == 0) 得到 1 或 0，左移 1 位得到 FLAG_ZERO (0x02) 或 0  
+    uint8_t nz = (n & 0x80) | ((n == 0) << 1);
+    cpu.p = (cpu.p & ~(FLAG_NEGATIVE | FLAG_ZERO)) | nz;
+}
+*/
+//注：这样写完全消除了三元运算符，强制编译器使用逻辑指令而非跳转指令。
+
+/* 修改 Flags */
+
+/*
+static inline  void cpu_modify_flag(uint8_t flag, int value) {
+    // 优化：消除 if/else，使用掩码直接操作  
+    // value 为 1 则设置，为 0 则清除  
+    cpu.p = (cpu.p & ~flag) | (value ? flag : 0);
+}
+*/
+/*
+static inline void cpu_modify_flag(uint8_t flag, int value) {
+    // value 为 1 时，-value 为 0xFFFFFFFF (全1)  
+    // value 为 0 时，-value 为 0x00000000 (全0)  
+    // 这样可以完全去掉三元运算符  
+    cpu.p = (cpu.p & ~flag) | (flag & -(uint8_t)value);
+}
+*/
 /* 栈操作 */
-void cpu_stack_push_byte(uint8_t data) { memory_write_byte(0x100 + cpu.sp, data); cpu.sp -= 1; }
-void cpu_stack_push_word(uint16_t data)    { memory_write_word(0x0ff + cpu.sp, data); cpu.sp -= 2; }
-uint8_t  cpu_stack_pop_byte()              { cpu.sp += 1; return memory_read_byte(0x100 + cpu.sp); }
-uint16_t cpu_stack_pop_word()              { cpu.sp += 2; return memory_read_word(0x0ff + cpu.sp); }
-
-
-/* CPU 寻址方式
- * 参考资料:
- * http://wiki.nesdev.com/w/index.php/CPU_addressing_modes
- * http://ewind.us/2015/nes-emu-5-6502-disassembler/
- * http://nicotine.knight.blog.163.com/blog/static/2692611220089705423961/
- * http://nicotine.knight.blog.163.com/blog/static/26926112200896032919/
- *
- * 程序代码参考了此处:
- * https://github.com/NJUOS/LiteNES
- */
-
+static inline void cpu_stack_push_byte(uint8_t data) { memory_write_byte(0x100 + cpu.sp, data); cpu.sp -= 1; }
+static inline void cpu_stack_push_word(uint16_t data) { memory_write_word(0x0ff + cpu.sp, data); cpu.sp -= 2; }
+static inline uint8_t  cpu_stack_pop_byte() { cpu.sp += 1; return memory_read_byte(0x100 + cpu.sp); }
+static inline uint16_t cpu_stack_pop_word() { cpu.sp += 2; return memory_read_word(0x0ff + cpu.sp); }
 
 /* 存储 CPU 经过寻址后得到的地址和该地址对应的值 */
-static uint16_t op_address;
-static uint8_t  op_value;
-static uint8_t additional_cycles;  // 对于某些寻址方式, 如果跨页访问, 需要多使用一个 CPU Cycle
-//Instruction* ins;
+uint16_t op_address;
+uint8_t  op_value;
+uint8_t additional_cycles;  // 对于某些寻址方式, 如果跨页访问, 需要多使用一个 CPU Cycle
 
 /* implied (1 字节)
  * 隐含寻址. 与累加器寻址类似, 不过指令所需的操作数不在 A 中, 而在其他寄存器中
  */
-void cpu_addressing_implied() { additional_cycles = 0; }
+static inline void cpu_addressing_implied() { additional_cycles = 0; }
 
 /* accumulator (1 字节)
  * 缩写: A
  * 累加器寻址. 指令所需操作数在累加器 A 中, 无需操作数
  */
-void cpu_addressing_accumulator() { additional_cycles = 0; }
+static inline void cpu_addressing_accumulator() { additional_cycles = 0; }
 
 /* immediate (2 字节)
  * 缩写: #v
  * 立即数寻址. 后面跟一个 8 位的立即数
  */
-void cpu_addressing_immediate() {
+static inline void cpu_addressing_immediate() {
     op_value = memory_read_byte(cpu.pc);
     cpu.pc++;
     additional_cycles = 0;
@@ -160,7 +202,7 @@ void cpu_addressing_immediate() {
  * 缩写: d
  * 零页寻址. 地址 00 ~ FF 为零页地址
  */
-void cpu_addressing_zeropage() {
+static inline void cpu_addressing_zeropage() {
     op_address = memory_read_byte(cpu.pc);
     op_value = memory_read_byte(op_address);
     cpu.pc++;
@@ -171,7 +213,7 @@ void cpu_addressing_zeropage() {
  * 缩写: d,x
  * 使用寄存器 X 的零页寻址. 在零页寻址的基础上, 地址与 X 中的值相加
  */
-void cpu_addressing_zeropage_x() {
+static inline void cpu_addressing_zeropage_x() {
     op_address = (memory_read_byte(cpu.pc) + cpu.x) & 0xff;
     op_value = memory_read_byte(op_address);
     cpu.pc++;
@@ -182,7 +224,7 @@ void cpu_addressing_zeropage_x() {
  * 缩写: d,y
  * 使用寄存器 Y 的零页寻址. 在零页寻址的基础上, 地址与 Y 中的值相加
  */
-void cpu_addressing_zeropage_y() {
+static inline void cpu_addressing_zeropage_y() {
     op_address = (memory_read_byte(cpu.pc) + cpu.y) & 0xff;
     op_value = memory_read_byte(op_address);
     cpu.pc++;
@@ -193,24 +235,9 @@ void cpu_addressing_zeropage_y() {
  * 缩写: a
  * 直接寻址. 操作数即为内存地址, 低位在前, 高位在后
  */
-void cpu_addressing_absolute() {
-    //op_address = memory_read_word(cpu.pc);
-    //op_value = memory_read_byte(op_address);
-    //cpu.pc += 2;
-    //additional_cycles = 0;
-    //
+static inline void cpu_addressing_absolute() {
     op_address = memory_read_word(cpu.pc);
-    // ========== 调试打印 ==========
-    if(op_address == 0x4016)
-    {
-        //printf("!!! LDA $4016: about read, pc=%04X\n", cpu.pc);
-    }
     op_value = memory_read_byte(op_address);
-    if(op_address == 0x4016)
-    {
-        //printf("!!! LDA $4016: op_address=0x4016, op_value=%02X\n", op_value);
-    }
-    // =============================
     cpu.pc += 2;
     additional_cycles = 0;
 }
@@ -219,13 +246,14 @@ void cpu_addressing_absolute() {
  * 缩写: a,x
  * 使用寄存器 X 的直接变址寻址. 16 位地址做为基地址, 与寄存器 X 的内容相加
  */
-void cpu_addressing_absolute_x() {
+static inline void cpu_addressing_absolute_x() {
     op_address = memory_read_word(cpu.pc) + cpu.x;
     op_value = memory_read_byte(op_address);
     cpu.pc += 2;
     if ((op_address >> 8) != (cpu.pc >> 8)) {
         additional_cycles = 1;
-    } else {
+    }
+    else {
         additional_cycles = 0;
     }
 }
@@ -234,13 +262,14 @@ void cpu_addressing_absolute_x() {
  * 缩写: a,y
  * 使用寄存器 Y 的直接变址寻址. 16 位地址做为基地址, 与寄存器 Y 的内容相加
  */
-void cpu_addressing_absolute_y() {
+static inline void cpu_addressing_absolute_y() {
     op_address = (memory_read_word(cpu.pc) + cpu.y) & 0xffff;
     op_value = memory_read_byte(op_address);
     cpu.pc += 2;
     if ((op_address >> 8) != (cpu.pc >> 8)) {
         additional_cycles = 1;
-    } else {
+    }
+    else {
         additional_cycles = 0;
     }
 }
@@ -249,14 +278,15 @@ void cpu_addressing_absolute_y() {
  * 缩写: label
  * 相对寻址. 用于条件转移指令. 指令第二字节为偏移量, 可正可负.
  */
-void cpu_addressing_relative() {
+static inline void cpu_addressing_relative() {
     op_address = memory_read_byte(cpu.pc);
     cpu.pc++;
-    if(op_address & 0x80) { op_address -= 0x100; }
+    if (op_address & 0x80) { op_address -= 0x100; }
     op_address += cpu.pc;
     if ((op_address >> 8) != (cpu.pc >> 8)) {
         additional_cycles = 1;
-    } else {
+    }
+    else {
         additional_cycles = 0;
     }
 }
@@ -265,14 +295,15 @@ void cpu_addressing_relative() {
  * 缩写: (a)
  * 间接寻址. 对应地址内存单元中的数做为地址.
  */
-void cpu_addressing_indirect() {
+static inline void cpu_addressing_indirect() {
     uint16_t arg_addr = memory_read_word(cpu.pc);
 
     /* 据说这是 6502 的 Bug */
-    if((arg_addr & 0xff) == 0xff) {
+    if ((arg_addr & 0xff) == 0xff) {
         // 有 Bug 的情况下
         op_address = (memory_read_byte(arg_addr & 0xff00) << 8) + memory_read_byte(arg_addr);
-    } else {
+    }
+    else {
         // 正常情况下
         op_address = memory_read_word(arg_addr);
     }
@@ -284,7 +315,7 @@ void cpu_addressing_indirect() {
  * 缩写: (d,x)
  * 先变址 X 后间接寻址. 以 X 做为变址, 与基地址相加, 然后间接寻址
  */
-void cpu_addressing_indirect_x() {
+static inline void cpu_addressing_indirect_x() {
     uint8_t arg_addr = memory_read_byte(cpu.pc);
     op_address = (memory_read_byte((arg_addr + cpu.x + 1) & 0xff) << 8) | memory_read_byte((arg_addr + cpu.x) & 0xff);
     op_value = memory_read_byte(op_address);
@@ -296,14 +327,15 @@ void cpu_addressing_indirect_x() {
  * 缩写: (d),y
  * 后变址 Y 间接寻址. 对操作数中的零页地址先做一次间接寻址, 得到 16 位地址, 再与 Y 相加, 对相加后得到的地址进行直接寻址.
  */
-void cpu_addressing_indirect_y() {
+static inline void cpu_addressing_indirect_y() {
     uint8_t arg_addr = memory_read_byte(cpu.pc);
     op_address = (((memory_read_byte((arg_addr + 1) & 0xff) << 8) | memory_read_byte(arg_addr)) + cpu.y) & 0xffff;
     op_value = memory_read_byte(op_address);
     cpu.pc++;
     if ((op_address >> 8) != (cpu.pc >> 8)) {
         additional_cycles = 1;
-    } else {
+    }
+    else {
         additional_cycles = 0;
     }
 }
@@ -312,35 +344,35 @@ void cpu_addressing_indirect_y() {
 
 /* ALU ******/
 
-void cpu_ora() {
+static inline void cpu_ora() {
     cpu.a |= op_value;
     cpu_checknz(cpu.a);
 }
 
-void cpu_and() {
+static inline void cpu_and() {
     cpu.a &= op_value;
     cpu_checknz(cpu.a);
 }
 
-void cpu_eor() {
+static inline void cpu_eor() {
     cpu.a ^= op_value;
     cpu_checknz(cpu.a);
 }
 
-void cpu_asl() {
+static inline void cpu_asl() {
     cpu_modify_flag(FLAG_CARRY, op_value & 0x80);
     op_value <<= 1;
     cpu_checknz(op_value);
     memory_write_byte(op_address, op_value);
 }
 
-void cpu_asla() {
+static inline void cpu_asla() {
     cpu_modify_flag(FLAG_CARRY, cpu.a & 0x80);
     cpu.a <<= 1;
     cpu_checknz(cpu.a);
 }
 
-void cpu_rol() {
+static inline void cpu_rol() {
     uint8_t tmp = cpu.p & FLAG_CARRY;
     cpu_modify_flag(FLAG_CARRY, op_value & 0x80);
     op_value <<= 1;
@@ -349,7 +381,7 @@ void cpu_rol() {
     cpu_checknz(op_value);
 }
 
-void cpu_rola() {
+static inline void cpu_rola() {
     uint8_t tmp = cpu.p & FLAG_CARRY;
     cpu_modify_flag(FLAG_CARRY, cpu.a & 0x80);
     cpu.a <<= 1;
@@ -357,7 +389,7 @@ void cpu_rola() {
     cpu_checknz(cpu.a);
 }
 
-void cpu_ror() {
+static inline void cpu_ror() {
     uint8_t tmp = cpu.p & FLAG_CARRY;
     cpu_modify_flag(FLAG_CARRY, op_value & 0x01);
     op_value >>= 1;
@@ -366,7 +398,7 @@ void cpu_ror() {
     cpu_checknz(op_value);
 }
 
-void cpu_rora() {
+static inline void cpu_rora() {
     uint8_t tmp = cpu.p & FLAG_CARRY;
     cpu_modify_flag(FLAG_CARRY, cpu.a & 0x01);
     cpu.a >>= 1;
@@ -374,20 +406,20 @@ void cpu_rora() {
     cpu_checknz(cpu.a);
 }
 
-void cpu_lsr() {
+static inline void cpu_lsr() {
     cpu_modify_flag(FLAG_CARRY, op_value & 0x01);
     op_value >>= 1;
     memory_write_byte(op_address, op_value);
     cpu_checknz(op_value);
 }
 
-void cpu_lsra() {
+static inline void cpu_lsra() {
     cpu_modify_flag(FLAG_CARRY, cpu.a & 0x01);
     cpu.a >>= 1;
     cpu_checknz(cpu.a);
 }
 
-void cpu_adc() {
+static inline void cpu_adc() {
     uint16_t tmp;
     tmp = op_value + cpu.a + ((cpu.p & FLAG_CARRY) ? 1 : 0);
     cpu_modify_flag(FLAG_CARRY, tmp & 0xff00);
@@ -396,7 +428,7 @@ void cpu_adc() {
     cpu_checknz(cpu.a);
 }
 
-void cpu_sbc() {
+static inline void cpu_sbc() {
     uint16_t tmp;
     tmp = cpu.a - op_value - (1 - ((cpu.p & FLAG_CARRY) ? 1 : 0));
     cpu_modify_flag(FLAG_CARRY, (tmp & 0xff00) == 0);
@@ -407,37 +439,37 @@ void cpu_sbc() {
 
 /* Branching ******/
 
-void cpu_bmi() { if(cpu.p & FLAG_NEGATIVE) { cpu.pc = op_address; }}
-void cpu_bcs() { if(cpu.p & FLAG_CARRY) { cpu.pc = op_address; }}
-void cpu_beq() { if(cpu.p & FLAG_ZERO) { cpu.pc = op_address; }}
-void cpu_bvs() { if(cpu.p & FLAG_OVERFLOW) { cpu.pc = op_address; }}
+static inline void cpu_bmi() { if (cpu.p & FLAG_NEGATIVE) { cpu.pc = op_address; } }
+static inline void cpu_bcs() { if (cpu.p & FLAG_CARRY) { cpu.pc = op_address; } }
+static inline void cpu_beq() { if (cpu.p & FLAG_ZERO) { cpu.pc = op_address; } }
+static inline void cpu_bvs() { if (cpu.p & FLAG_OVERFLOW) { cpu.pc = op_address; } }
 
-void cpu_bpl() { if(!(cpu.p & FLAG_NEGATIVE)) { cpu.pc = op_address; }}
-void cpu_bcc() { if(!(cpu.p & FLAG_CARRY)) { cpu.pc = op_address; }}
-void cpu_bne() { if(!(cpu.p & FLAG_ZERO)) { cpu.pc = op_address; }}
-void cpu_bvc() { if(!(cpu.p & FLAG_OVERFLOW)) { cpu.pc = op_address; }}
+static inline void cpu_bpl() { if (!(cpu.p & FLAG_NEGATIVE)) { cpu.pc = op_address; } }
+static inline void cpu_bcc() { if (!(cpu.p & FLAG_CARRY)) { cpu.pc = op_address; } }
+static inline void cpu_bne() { if (!(cpu.p & FLAG_ZERO)) { cpu.pc = op_address; } }
+static inline void cpu_bvc() { if (!(cpu.p & FLAG_OVERFLOW)) { cpu.pc = op_address; } }
 
 /* Comapre ******/
 
-void cpu_bit() {
+static inline void cpu_bit() {
     cpu_modify_flag(FLAG_OVERFLOW, op_value & 0x40);
     cpu_modify_flag(FLAG_NEGATIVE, op_value & 0x80);
     cpu_modify_flag(FLAG_ZERO, !(op_value & cpu.a));
 }
 
-void cpu_cmp() {
+static inline void cpu_cmp() {
     int tmpc = cpu.a - op_value;
     cpu_modify_flag(FLAG_CARRY, tmpc >= 0);
     cpu_checknz((uint8_t)tmpc);
 }
 
-void cpu_cpx() {
+static inline void cpu_cpx() {
     int tmpc = cpu.x - op_value;
     cpu_modify_flag(FLAG_CARRY, tmpc >= 0);
     cpu_checknz((uint8_t)tmpc);
 }
 
-void cpu_cpy() {
+static inline void cpu_cpy() {
     int tmpc = cpu.y - op_value;
     cpu_modify_flag(FLAG_CARRY, tmpc >= 0);
     cpu_checknz((uint8_t)tmpc);
@@ -445,73 +477,72 @@ void cpu_cpy() {
 
 /* Flag ******/
 
-void cpu_clc() { cpu_modify_flag(FLAG_CARRY, 0); }
-void cpu_cli() { cpu_modify_flag(FLAG_INTERRUPT, 0); }
-void cpu_cld() { cpu_modify_flag(FLAG_DECIMAL, 0); }
-void cpu_clv() { cpu_modify_flag(FLAG_OVERFLOW, 0); }
-void cpu_sec() { cpu_modify_flag(FLAG_CARRY, 1); }
-void cpu_sei() { cpu_modify_flag(FLAG_INTERRUPT, 1); }
-void cpu_sed() { cpu_modify_flag(FLAG_DECIMAL, 1); }
+static inline void cpu_clc() { cpu_modify_flag(FLAG_CARRY, 0); }
+static inline void cpu_cli() { cpu_modify_flag(FLAG_INTERRUPT, 0); }
+static inline void cpu_cld() { cpu_modify_flag(FLAG_DECIMAL, 0); }
+static inline void cpu_clv() { cpu_modify_flag(FLAG_OVERFLOW, 0); }
+static inline void cpu_sec() { cpu_modify_flag(FLAG_CARRY, 1); }
+static inline void cpu_sei() { cpu_modify_flag(FLAG_INTERRUPT, 1); }
+static inline void cpu_sed() { cpu_modify_flag(FLAG_DECIMAL, 1); }
 
 /* Inc & Dec ******/
 
-void cpu_dec() {
+static inline void cpu_dec() {
     uint8_t tmp = op_value - 1;
     memory_write_byte(op_address, tmp);
     cpu_checknz(tmp);
 }
 
-void cpu_dex() {
+static inline void cpu_dex() {
     cpu.x--;
     cpu_checknz(cpu.x);
 }
 
-void cpu_dey() {
+static inline void cpu_dey() {
     cpu.y--;
     cpu_checknz(cpu.y);
 }
 
-void cpu_inc() {
+static inline void cpu_inc() {
     uint8_t tmp = op_value + 1;
     memory_write_byte(op_address, tmp);
     cpu_checknz(tmp);
 }
 
-void cpu_inx() {
+static inline void cpu_inx() {
     cpu.x++;
     cpu_checknz(cpu.x);
 }
 
-void cpu_iny() {
+static inline void cpu_iny() {
     cpu.y++;
     cpu_checknz(cpu.y);
 }
 
 /* Load & Store ******/
 
-void cpu_lda() { cpu.a = op_value; cpu_checknz(cpu.a); }
-//void cpu_lda() { cpu.a = 1; cpu_checknz(cpu.a); }
-void cpu_ldx() { cpu.x = op_value; cpu_checknz(cpu.x); }
-void cpu_ldy() { cpu.y = op_value; cpu_checknz(cpu.y); }
-void cpu_sta() { memory_write_byte(op_address, cpu.a); }
-void cpu_stx() { memory_write_byte(op_address, cpu.x); }
-void cpu_sty() { memory_write_byte(op_address, cpu.y); }
+static inline void cpu_lda() { cpu.a = op_value; cpu_checknz(cpu.a); }
+static inline void cpu_ldx() { cpu.x = op_value; cpu_checknz(cpu.x); }
+static inline void cpu_ldy() { cpu.y = op_value; cpu_checknz(cpu.y); }
+static inline void cpu_sta() { memory_write_byte(op_address, cpu.a); }
+static inline void cpu_stx() { memory_write_byte(op_address, cpu.x); }
+static inline void cpu_sty() { memory_write_byte(op_address, cpu.y); }
 
 /* Misc ******/
 
-void cpu_nop() {}
+static inline void cpu_nop() {}
 
 /* Stack & Jump ******/
 
-void cpu_pha() { cpu_stack_push_byte(cpu.a); }
-void cpu_php() { cpu_stack_push_byte(cpu.p | 0x30); }
-void cpu_pla() { cpu.a = cpu_stack_pop_byte(); cpu_checknz(cpu.a); }
-void cpu_plp() { cpu.p = (cpu_stack_pop_byte() & 0xef) | 0x20; }
-void cpu_rts() { cpu.pc = cpu_stack_pop_word() + 1; }
-void cpu_rti() { cpu.p = cpu_stack_pop_byte() | FLAG_UNUSED; cpu.pc = cpu_stack_pop_word(); }
-void cpu_jmp() { cpu.pc = op_address; }
-void cpu_jsr() { cpu_stack_push_word(cpu.pc - 1); cpu.pc = op_address; }
-void cpu_brk() {
+static inline void cpu_pha() { cpu_stack_push_byte(cpu.a); }
+static inline void cpu_php() { cpu_stack_push_byte(cpu.p | 0x30); }
+static inline void cpu_pla() { cpu.a = cpu_stack_pop_byte(); cpu_checknz(cpu.a); }
+static inline void cpu_plp() { cpu.p = (cpu_stack_pop_byte() & 0xef) | 0x20; }
+static inline void cpu_rts() { cpu.pc = cpu_stack_pop_word() + 1; }
+static inline void cpu_rti() { cpu.p = cpu_stack_pop_byte() | FLAG_UNUSED; cpu.pc = cpu_stack_pop_word(); }
+static inline void cpu_jmp() { cpu.pc = op_address; }
+static inline void cpu_jsr() { cpu_stack_push_word(cpu.pc - 1); cpu.pc = op_address; }
+static inline void cpu_brk() {
     cpu_stack_push_word(cpu.pc - 1);
     cpu_stack_push_byte(cpu.p);
     cpu.p |= FLAG_UNUSED | FLAG_BREAK;
@@ -520,12 +551,12 @@ void cpu_brk() {
 
 /* Transfer ******/
 
-void cpu_tax() { cpu.x = cpu.a; cpu_checknz(cpu.x); }
-void cpu_tay() { cpu.y = cpu.a; cpu_checknz(cpu.y); }
-void cpu_txa() { cpu.a = cpu.x; cpu_checknz(cpu.a); }
-void cpu_tya() { cpu.a = cpu.y; cpu_checknz(cpu.a); }
-void cpu_tsx() { cpu.x = cpu.sp; cpu_checknz(cpu.x); }
-void cpu_txs() { cpu.sp = cpu.x; }
+static inline void cpu_tax() { cpu.x = cpu.a; cpu_checknz(cpu.x); }
+static inline void cpu_tay() { cpu.y = cpu.a; cpu_checknz(cpu.y); }
+static inline void cpu_txa() { cpu.a = cpu.x; cpu_checknz(cpu.a); }
+static inline void cpu_tya() { cpu.a = cpu.y; cpu_checknz(cpu.a); }
+static inline void cpu_tsx() { cpu.x = cpu.sp; cpu_checknz(cpu.x); }
+static inline void cpu_txs() { cpu.sp = cpu.x; }
 
 /* Undocumented Opcodes: 未实现 ******/
 void cpu_nop_imm(void) { cpu_addressing_immediate();   cpu_nop(); }

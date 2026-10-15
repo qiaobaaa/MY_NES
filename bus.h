@@ -68,6 +68,10 @@ static inline void memory_write_byte(uint16_t address, uint8_t data) {
             break;
         case 1:                        // 2000 ~ 3FFF, PPU 寄存器
             ppu_io_write(address, data);
+            if(address == 0x2000)
+            {
+                printf("@@@@@ %d\n",data);
+            }
             break;
         case 2:                        // APU 与 IO 寄存器
             io_write(address, data);

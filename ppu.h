@@ -4,6 +4,19 @@
 #include "cartridge.h"
 #include "cpu.h"
 
+typedef union {
+  struct {
+    uint8_t CTRL_N : 2; /*  Base nametable address (0 = $2000; 1 = $2400; 2 = $2800; 3 = $2C00) */
+    uint8_t CTRL_I : 1; /*  VRAM address increment per CPU read/write of PPUDATA (0: add 1, going across; 1: add 32, going down) */
+    uint8_t CTRL_S : 1; /*  Sprite pattern table address for 8x8 sprites (0: $0000; 1: $1000; ignored in 8x16 mode) */
+    uint8_t CTRL_B : 1; /*  Background pattern table address (0: $0000; 1: $1000) */
+    uint8_t CTRL_H : 1; /*  Sprite size (0: 8x8 pixels; 1: 8x16 pixels – see PPU OAM#Byte 1) */
+    uint8_t CTRL_P : 1; /*  (0: read backdrop from EXT pins; 1: output color on EXT pins) */
+    uint8_t CTRL_V : 1; /*  Generate an NMI at the start of the vertical blanking interval (0: off; 1: on) */
+  };
+  uint8_t ppu_ctrl;
+} ppu_ctrl;
+
 // ppu.h - PPU 知道 Cartridge（访问 VRAM）
 typedef struct PPU {
     Cartridge* cart; // 用于读取 CHR ROM
@@ -13,6 +26,7 @@ typedef struct PPU {
 
     /* PPU 寄存器 */
     uint8_t ppuctrl;     // 2000: PPU 控制寄存器，WRITE
+    //ppu_ctrl ppuctrl;
     uint8_t ppumask;     // 2001: PPU MASK 寄存器，WRITE
     uint8_t ppustatus;   // 2002: PPU 状态寄存器，READ
     uint8_t oamaddr;     // 2003: PPU OAM 地址，WRITE
@@ -42,8 +56,8 @@ extern uint16_t screen[256 * 242];
 void ppu_init();
 //void ppu_finish();  @@@
 
-uint8_t ppu_ram_read(uint16_t address);
-void ppu_ram_write(uint16_t address, uint8_t data);
+static inline uint8_t ppu_ram_read(uint16_t address);
+static inline void ppu_ram_write(uint16_t address, uint8_t data);
 uint8_t ppu_io_read(uint16_t address);
 void ppu_io_write(uint16_t address, uint8_t data);
 
@@ -74,7 +88,7 @@ void ppu_set_background_color(uint8_t color);
 
 // PPUCTRL Functions
 
-uint16_t ppu_base_nametable_address();
+static inline uint16_t ppu_base_nametable_address();
 uint8_t ppu_vram_address_increment();
 uint16_t ppu_sprite_pattern_table_address();
 uint16_t ppu_background_pattern_table_address();
@@ -116,6 +130,8 @@ void ppu_set_in_vblank(bool value);
 void ppu_draw_background_scanline(bool mirror);
 void ppu_draw_background_scanlinee(bool mirror);
 void ppu_draw_sprite_scanline();
+
+void render_sprite();
 
 static inline void pixbuf_add(uint16_t x, uint16_t y, uint8_t idx);
 void pixbuf_addd(uint16_t x);
