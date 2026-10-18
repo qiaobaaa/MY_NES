@@ -21,6 +21,7 @@ typedef struct sprite {
   uint8_t idx[8];  //精灵的每个像素颜色索引
   uint8_t x;       //精灵的起始x坐标
   uint8_t id;      //实际是第几个精灵
+  bool is_background;
 } SPRITE;
 
 SPRITE sprite_tem[8];
@@ -334,7 +335,7 @@ void ppu_io_write(uint16_t address, uint8_t data) {
   switch (address) {
     case 0:
       if (ppu.ready) { ppu.ppuctrl = data; }
-      ppu.ppuctrl = data;
+      //ppu.ppuctrl = data;
       //printf("ppu ctrl %d", data);
       break;
     case 1:
@@ -477,13 +478,24 @@ void ppu_cycle() {
   }
 
   if (ppu_show_sprites() && ppu.scanline > 0 && ppu.scanline < 240 && ppu.scanline == sprite_scanline && sprite_num != 0) {
+    int background_id = ppu_ram_read(0x3f00);
+	  uint16_t background_color = palette_rgb565[background_id];
+	  uint16_t x = 0;
+	  uint16_t y = 0;
     for (int i = 0; i < sprite_num; i++)  //添加这一行要显示的精灵
     {
-      for (int j = 0; j < 8; j++) {
+      for (int j = 7; j >= 0; j--) {
+			  bool sprite_background = sprite_tem[i].is_background;
         uint8_t color_idx = sprite_tem[i].idx[j];
+        x = sprite_tem[i].x + j;
+			  y = ppu.scanline;
         if (color_idx != 65) {
-          if (color_idx != 66) {
-            pixbuf_add(sprite_tem[i].x + j, ppu.scanline, color_idx);
+          if (!sprite_background) {
+            pixbuf_add(x, y, color_idx);
+          }
+          else if(sprite_background && screen[x + y * 256] == background_color)
+          {
+            pixbuf_add(x, y, color_idx);
           }
           //判断精灵0 hit触发, 一定是精灵0，而不是精灵1之类的，因为精灵1也可能在0号位置
           if (ppu_show_background() && !ppu_sprite_hit_occured && sprite_tem[i].id == 0 && ppu_screen_background[sprite_tem[i].x + j][ppu.scanline] != 0) {
@@ -962,14 +974,15 @@ void render_sprite() {
     if ((uint16_t)sprite_y > target_scanline || (uint16_t)target_scanline >= (uint16_t)sprite_y + sprite_size) {
       continue;
     }
-
+    //int s_idx=0;
+    //if(sprite_count <9) s_idx = sprite_count;
     int s_idx = sprite_count;
     sprite_count++;
 
     if (sprite_count > 8) {
       //ppu.status.STATUS_O = 1;  //精灵溢出位置一，并跳出循环，因为一行最多8个不会再多
       ppu_set_sprite_overflow(true);
-      break;
+      continue;
     }
 
     //判断是否水平镜像或者垂直镜像
@@ -984,89 +997,96 @@ void render_sprite() {
     sprite_num++;
     sprite_tem[s_idx].x = sprite_x;
     sprite_tem[s_idx].id = n / 4;
+      if (sprite_size == 8) {
+        tile_address = ppu_sprite_pattern_table_address() + 16 * ppu.sprite_ram[n + 1];
+        //int y_in_tile = ppu.scanline & 0x7;
+        row = vflip ? (7 - dy) : dy;  // 使用 dy 而不是 scanline & 0x7
 
-    if (sprite_size == 8) {
-      tile_address = ppu_sprite_pattern_table_address() + 16 * ppu.sprite_ram[n + 1];
-      //int y_in_tile = ppu.scanline & 0x7;
-      row = vflip ? (7 - dy) : dy;  // 使用 dy 而不是 scanline & 0x7
+        uint8_t l = ppu_ram_read(tile_address + row);
+        uint8_t h = ppu_ram_read(tile_address + row + 8);
 
-      uint8_t l = ppu_ram_read(tile_address + row);
-      uint8_t h = ppu_ram_read(tile_address + row + 8);
+        //未开发完
+        for (x = 0; x < 8; x++) {
+          //确定使用颜色在调色板中的索引
+          int color = hflip ? ppu_l_h_addition_flip_table[l][h][x] : ppu_l_h_addition_table[l][h][x];
+          // Color 0 is transparent
+          int screen_x = sprite_x + x;
+          if (color != 0) {
+            //int screen_x = sprite_x + x;
+            int idx = ppu_ram_read(palette_address + color);
 
-      //未开发完
-      for (x = 0; x < 8; x++) {
-        //确定使用颜色在调色板中的索引
-        int color = hflip ? ppu_l_h_addition_flip_table[l][h][x] : ppu_l_h_addition_table[l][h][x];
-        // Color 0 is transparent
-        int screen_x = sprite_x + x;
-        if (color != 0) {
-          //int screen_x = sprite_x + x;
-          int idx = ppu_ram_read(palette_address + color);
-
-          if (ppu.sprite_ram[n + 2] & 0x20) {  // 位于背景之后
-            sprite_tem[s_idx].idx[x] = 66;     //在背景后添为0
-          } else {                             // 位于背景之前
-            sprite_tem[s_idx].idx[x] = idx;
+            if (ppu.sprite_ram[n + 2] & 0x20) {  // 位于背景之后
+              sprite_tem[s_idx].idx[x] = idx;     //在背景后添为0
+              sprite_tem[s_idx].is_background = true;
+            } else {                             // 位于背景之前
+              sprite_tem[s_idx].idx[x] = idx;
+              sprite_tem[s_idx].is_background = false;
+            }
+          } else {
+            sprite_tem[s_idx].idx[x] = 65;  //表示颜色是0，所以索引用了-1
           }
-        } else {
-          sprite_tem[s_idx].idx[x] = 65;  //表示颜色是0，所以索引用了-1
         }
-      }
-    } else  //16模式
-    {
-      //1.如果是16模式的话先确定现在的target_scaline到底在上半精灵还是下半精灵；
-      //2.第一步知道在上下之后看有没有垂直翻转，如果有的话，翻转块，没有保持不变；
-      //3.看有没有水平翻转有的话，需要把0-7显示变成7-0显示
-      //4.记录对应位置的颜色，分两大类如果color==0表示显示背景色，非0的话还要判断优先级背景前后
-      printf("sprite size = %d\n", sprite_size);
-      uint8_t base_tile = ppu.sprite_ram[n + 1];
-      uint8_t final_tile;
-      uint16_t sprite_pattern_table_address = (base_tile & 0x1) ? 0x1000 : 0x000;
-      base_tile = base_tile >> 1;
-
-      if (dy < 8)  //上半区精灵
+      } else  //16模式
       {
-        //final_tile = vflip ? (base_tile + 1) : base_tile;
-        // 如果翻转，上半区显示的是第二个图块(Index+1)且行反转
-        // 如果不翻转，上半区显示的是第一个图块(Index)且行正向
-        final_tile = vflip ? (base_tile + 1) : base_tile;
-        row = vflip ? (7 - dy) : dy;  // 注意：这里的 dy 在 0-7 之间
-                                      // 修正：如果 vflip=true，上半区实际上是原图的最后 8 行，所以应该是 7-dy 吗？
-                                      // 不，最简单的逻辑是：
-                                      // vflip=false: dy(0-7) -> Tile0(0-7), dy(8-15) -> Tile1(0-7)
-                                      // vflip=true:  dy(0-7) -> Tile1(7-0), dy(8-15) -> Tile0(7-0)
-      } else                          //下半区精灵
-      {
-        final_tile = vflip ? base_tile : (base_tile + 1);
-        row = vflip ? (7 - (dy - 8)) : (dy - 8);
-      }
+        //1.如果是16模式的话先确定现在的target_scaline到底在上半精灵还是下半精灵；
+        //2.第一步知道在上下之后看有没有垂直翻转，如果有的话，翻转块，没有保持不变；
+        //3.看有没有水平翻转有的话，需要把0-7显示变成7-0显示
+        //4.记录对应位置的颜色，分两大类如果color==0表示显示背景色，非0的话还要判断优先级背景前后
+        //printf("sprite size = %d\n", sprite_size);
+        uint8_t base_tile = ppu.sprite_ram[n + 1];
+        uint8_t final_tile;
+        uint16_t sprite_pattern_table_address = (base_tile & 0x1) ? 0x1000 : 0x000;
+        //base_tile = base_tile >> 1;
+        base_tile = base_tile & 0xFE;
 
-      //tile_address = ppu_sprite_pattern_table_address() + 16 * final_tile;
-      tile_address = sprite_pattern_table_address + 16 * final_tile;
-      uint8_t l = ppu_ram_read(tile_address + row);
-      uint8_t h = ppu_ram_read(tile_address + row + 8);
+        if (dy < 8)  //上半区精灵
+        {
+          //final_tile = vflip ? (base_tile + 1) : base_tile;
+          // 如果翻转，上半区显示的是第二个图块(Index+1)且行反转
+          // 如果不翻转，上半区显示的是第一个图块(Index)且行正向
+          final_tile = vflip ? (base_tile + 1) : base_tile;
+          row = vflip ? (7 - dy) : dy;  // 注意：这里的 dy 在 0-7 之间
+                                        // 修正：如果 vflip=true，上半区实际上是原图的最后 8 行，所以应该是 7-dy 吗？
+                                        // 不，最简单的逻辑是：
+                                        // vflip=false: dy(0-7) -> Tile0(0-7), dy(8-15) -> Tile1(0-7)
+                                        // vflip=true:  dy(0-7) -> Tile1(7-0), dy(8-15) -> Tile0(7-0)
+        } else                          //下半区精灵
+        {
+          final_tile = vflip ? base_tile : (base_tile + 1);
+          row = vflip ? (7 - (dy - 8)) : (dy - 8);
+        }
 
-      for (x = 0; x < 8; x++) {
-        //确定使用颜色在调色板中的索引
-        int color = hflip ? ppu_l_h_addition_flip_table[l][h][x] : ppu_l_h_addition_table[l][h][x];
-        // Color 0 is transparent
-        int screen_x = sprite_x + x;
-        if (color != 0) {
-          //int screen_x = sprite_x + x;
-          int idx = ppu_ram_read(palette_address + color);
+        //tile_address = ppu_sprite_pattern_table_address() + 16 * final_tile;
+        tile_address = sprite_pattern_table_address + 16 * final_tile;
+        uint8_t l = ppu_ram_read(tile_address + row);
+        uint8_t h = ppu_ram_read(tile_address + row + 8);
 
-          if (ppu.sprite_ram[n + 2] & 0x20) {  // 位于背景之后
-            sprite_tem[s_idx].idx[x] = 66;     //在背景后添为0
-          } else {                             // 位于背景之前
-            sprite_tem[s_idx].idx[x] = idx;
+        for (x = 0; x < 8; x++) {
+          //确定使用颜色在调色板中的索引
+          int color = hflip ? ppu_l_h_addition_flip_table[l][h][x] : ppu_l_h_addition_table[l][h][x];
+          // Color 0 is transparent
+          int screen_x = sprite_x + x;
+          if (color != 0) {
+            //int screen_x = sprite_x + x;
+            int idx = ppu_ram_read(palette_address + color);
+
+            if (ppu.sprite_ram[n + 2] & 0x20) {  // 位于背景之后
+              //sprite_tem[s_idx].idx[x] = 66;     //在背景后添为0
+              sprite_tem[s_idx].idx[x] = idx;     //在背景后添为0
+              sprite_tem[s_idx].is_background = true;
+            } else {                             // 位于背景之前
+              //sprite_tem[s_idx].idx[x] = idx;
+              sprite_tem[s_idx].idx[x] = idx;
+              sprite_tem[s_idx].is_background = false;
+            }
+          } else {
+            sprite_tem[s_idx].idx[x] = 65;  //表示颜色是0，所以索引用了-1
           }
-        } else {
-          sprite_tem[s_idx].idx[x] = 65;  //表示颜色是0，所以索引用了-1
         }
+        //未开发完
       }
-      //未开发完
     }
-  }
+  
   sprite_scanline = target_scanline;
 }
 
