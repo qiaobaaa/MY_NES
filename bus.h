@@ -21,7 +21,7 @@ static inline uint8_t memory_read_byte(uint16_t address) {
             //return interal_ram[address % 0x0800];
             return interal_ram[address & 0x07FF];
         case 1:                        // 2000 ~ 3FFF, PPU 寄存器
-            return ppu_io_read(address);
+            return ppu_register_read(address);
         case 2:                      // APU 与 IO 寄存器
             // cpu.a = 0x01;;
             return io_read(address);
@@ -72,7 +72,7 @@ static inline void memory_write_byte(uint16_t address, uint8_t data) {
                 //data |= 0x20;
                 //printf("FORCED 8x16 MODE: 0x%02X\n", data);
             //}
-            ppu_io_write(address, data);
+            ppu_register_write(address, data);
             //if(address == 0x2000)
             //{
                 //printf("@@@@@ %d\n",data);

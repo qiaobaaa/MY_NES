@@ -115,6 +115,7 @@ typedef struct PPU {
 } PPU;
 
 extern PPU ppu;
+extern uint16_t screen[256 * 242];
 
 uint8_t ppu_register_read(uint16_t address);
 void ppu_register_write(uint16_t address, uint8_t data);
@@ -123,10 +124,19 @@ void ppu_cycle();
 void ppu_run(int cycles);
 
 void ppu_draw_background_scanline();
-void ppu_draw_sprite_scanline();
+void ppu_draw_sprite_scanline(uint8_t scanline);
+void prepare_sprite_scanline();
+
+void ppu_sprram_write(uint8_t data);
+void ppu_copy(uint16_t address, uint8_t* source, int length);
+
+void ppu_init();
+void ppu_set_mirroring(uint8_t mirroring);
 
 static inline void pixbuf_add(uint16_t x, uint16_t y, uint8_t idx);
 void pixbuf_addd(uint16_t x);
+
+void fill_line(uint8_t scanline);
 
 const uint16_t palette_rgb565[64] = {
     0x8410, // RGB567(0x80,0x80,0x80)

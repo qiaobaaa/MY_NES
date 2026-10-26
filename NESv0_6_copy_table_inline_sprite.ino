@@ -40,7 +40,7 @@ Arduino_DSI_Display *gfx = new Arduino_DSI_Display(
   display_cfg.init_cmds_size);
 
 
-//CPU cpu;
+CPU cpu;
 PPU ppu;
 Cartridge cart;
 nes_joypad joypadd;
@@ -89,8 +89,8 @@ void setup() {
 void loop() {
   //File romFile = SD_MMC.open("/gongfu.nes", FILE_READ);
   //File romFile = SD_MMC.open("/gongfuz.nes", FILE_READ);
-  File romFile = SD_MMC.open("/jingang.nes", FILE_READ);
-  //File romFile = SD_MMC.open("/super.nes", FILE_READ);
+  //File romFile = SD_MMC.open("/jingang.nes", FILE_READ);
+  File romFile = SD_MMC.open("/super.nes", FILE_READ);
   //File romFile = SD_MMC.open("/70.nes", FILE_READ);
   //File romFile = SD_MMC.open("/7100.nes", FILE_READ);
   //File romFile = SD_MMC.open("/tanke.nes", FILE_READ);
@@ -177,85 +177,6 @@ void emu_init() {
   nes_init();
 }
 
-void emu_run() {
-  /*
-    for (;;) {
-        //wait_for_frame();
-        int scanlines = 262;
-        while (scanlines-- > 0) {
-            // TODO: 能否用多线程进行优化？
-            ppu_run(1);
-            cpu_run(1364 / 12);
-        }
-    }
-    */
-  while (1) {
-    //int idx = ppu_ram_read(0x3f00);
-    //uint16_t c = palette_rgb565[idx];
-    //gfx->fillScreen(c);
-    //delay(20);
-    /*
-        int idx = ppu_ram_read(0x3f00);
-                uint16_t c = palette_rgb565[idx];
-                for(int i=0;i<256*240;i++)
-                {
-                   // if(screen[i]==0)
-                   // {
-                   //   screen[i]=c;
-                   // }
-                    printf("%ld\n",screen[i]);
-                }
-        */
-    //uint32_t start = micros();
-    //gfx->draw16bitRGBBitmap(32, 0, screen, 256, 240);
-    //delay(0);
-    /*
-        for(int i=0;i<256*240;i++)
-                {
-                  
-                      screen[i]=0;
-                  
-                }
-          */
-    //start = micros() - start;
-    //printf("%u\n",start);
-    //delay(10);
-    //start = micros();
-    //uint32_t start = micros();
-    uint32_t startt = micros();
-    //uint32_t s = 0;
-    int scanlines = 262;
-    button();
-    //printf("@@@@@@@@@@@  %d\n", joypadd.joypad);
-    while (scanlines-- > 0) {
-      // TODO: 能否用多线程进行优化？
-      //uint32_t start = micros();
-      ppu_run(1);
-      //start = micros() - start;
-      //printf("%u\n",start);
-      //start = micros();
-      cpu_run(1364 / 12);
-      //start = micros() - start;
-      //s+=start;
-      //printf("......%u\n",start);
-    }
-    //button();
-    //printf("@@@@@@@@@@@  %d\n", joypadd.joypad);
-    //startt = micros() - startt;
-    //printf("cpu time = %u\n",s);
-    //printf("all time = %u\n",startt);
-    gfx->draw16bitRGBBitmap(32, 0, screen, 256, 240);
-    startt = micros() - startt;
-    //printf("cpu time = %u\n",s);
-    printf("all time = %u\n", startt);
-    //printf("........%u\n",start);
-    //start = micros() - start;
-    //printf("%u\n",start);
-    //delay(12);
-    //gfx->draw16bitRGBBitmap(0, 0, screen, 256, 240);
-  }
-}
-
 void nes_init() {
   joypadd.mask = 0;
   joypadd.offset = 0;
@@ -322,7 +243,8 @@ void button() {
   }
 }
 
-void nes_run() {
+
+void emu_run() {
   //cpu_reset(nes);
   int rem = 0;  // 跨帧不重置
   //int ticks = 0;
@@ -336,7 +258,7 @@ void nes_run() {
     ppu.status.STATUS_O = 0;
     //ppu.STATUS_S = 0;
     //ppu.STATUS_O = 0;
-
+     uint32_t start = micros(); 
     // ═══ 262 行统一循环（含可见 + vblank + pre - render）═══
     for (int i = 0; i < 262; i++) {
       //1. 计算本行 CPU ticks（分数累加）
@@ -354,21 +276,22 @@ void nes_run() {
       //2. 可见行(0~239) 才渲染
       if (i < 240) {
         if (ppu.mask.MASK_s) {
-          prepare_sprite_line(nes, scanline);
+          //prepare_sprite_scanline();
         }
 
         if (ppu.mask.MASK_b) {
-          render_bg_line(nes, scanline);
+          ppu_draw_background_scanline();
         } else {
-          fill_line(nes, scanline, palette[0]);
+          fill_line(i);
         }
 
         if (ppu.mask.MASK_s) {
-          render_sprite_line(nes, scanline);
+          //ppu_draw_sprite_scanline(i);
         }
 
         //# 3. CPU 执行 — 前半段(dot 0~254)
-        cpu_execute(nes, nes.timing.line_split);  //# 85,前半段固定为85
+        //cpu_execute(nes, nes.timing.line_split);  //# 85,前半段固定为85
+        cpu_run(85);
 
         //4. PPU 行末地址回绕(dot 256 / 257)
         if (ppu.mask.MASK_b || ppu.mask.MASK_s) {
@@ -394,26 +317,29 @@ void nes_run() {
           ppu.v.reg = (ppu.v.reg & (uint16_t)0xFBE0) | (ppu.t.reg & (uint16_t)0x041F);
         }
 
-        if (nes->nes_mapper.mapper_hsync) {
-          nes->nes_mapper.mapper_hsync(nes);
-        }
+        //if (nes->nes_mapper.mapper_hsync) {
+          //nes->nes_mapper.mapper_hsync(nes);
+        //}
 
         //# 5. CPU 执行 — 后半段(dot 255~340)
-        cpu_execute(nes, ticks - nes.timing.line_split);  //# 28 or 29
+        //cpu_execute(nes, ticks - nes.timing.line_split);  //# 28 or 29
+        cpu_run(ticks - 85);
       } else {
         if (i == 240) {
           ppu.status.STATUS_V = 1;  //# VBlank 开始  Set VBlank flag (241 line)
-          if (ppu.ctrl.CTRL_V)
-            nes->nes_cpu.irq_nmi = 1;
-          if (nes->nes_mapper.mapper_vsync)
-            nes->nes_mapper.mapper_vsync(nes);
+          if (ppu.ctrl.CTRL_V){
+            cpu.irq_nmi = 1;
+          }
+          //if (nes->nes_mapper.mapper_vsync)
+            //nes->nes_mapper.mapper_vsync(nes);
         }
 
         if (i == 261) {
           ppu.status.ppu_status = 0;  // Clear:VBlank,Sprite 0,Overflow
         }
 
-        cpu_execute(nes, ticks);
+        //cpu_execute(nes, ticks);
+        cpu_run(ticks);
         if ((ppu.mask.MASK_b || ppu.mask.MASK_s) && i == 261) {
           // Dot 257 copies horizontal scroll bits, then dots 280-304 copy vertical bits.
           // At line granularity this is equivalent to syncing the full VRAM address.
@@ -422,12 +348,17 @@ void nes_run() {
         }
       }
       // APU 每 N 行触发一次
-      if (i % nes->timing.apu_frame_divisor == nes->timing.apu_frame_divisor - 1) {
-        nes_apu_frame(nes);
-      }
+      //if (i % nes->timing.apu_frame_divisor == nes->timing.apu_frame_divisor - 1) {
+        //nes_apu_frame(nes);
+      //}
     }
     //# ═══ 帧提交 ═══
-    draw_frame(nes);
-    nes_frame(nes);  //# 输入 / 退出检查
+    //draw_frame(nes);
+    gfx->draw16bitRGBBitmap(32, 0, screen, 256, 240);
+    start = micros() - start;
+        //printf("cpu time = %u\n",s);
+        printf("all time = %u\n",start);
+    printf("666\n");
+    //nes_frame(nes);  //# 输入 / 退出检查
   }
 }

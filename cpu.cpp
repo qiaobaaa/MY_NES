@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include "cpu.h"
 #include "bus.h"
-uint64_t cpu_cycles;
+int64_t cpu_cycles;
 static Instruction opcode_table[256];
 
 /* 用于获得 CPU 状态寄存器中的指定状态, 具体内容见后面的注释 */
@@ -29,6 +29,8 @@ static Instruction opcode_table[256];
  *    |+-------- Overflow: 溢出标志. 有溢出时为 1, 无溢出时为 0
  *    +--------- Negative: 负数标志. 无溢出时 1 表示结果为负, 有溢出是 1 表示结果为正
  */
+
+/* 
 struct _cpu {
     uint8_t  a;    // 累加寄存器 Accumulator
     uint8_t  x;    // 变址寄存器 Index Register X
@@ -37,6 +39,7 @@ struct _cpu {
     uint8_t  p;    // 状态寄存器 Status Register
     uint16_t pc;   // 程序计数器 Program Counter
 } cpu;
+*/
 
 /* 显示 CPU 寄存器, 时钟等信息 */
 void cpu_debugger() {
@@ -69,6 +72,9 @@ void cpu_init() {
 
     cpu.pc = memory_read_word(0xfffc);
     cpu_init_table();
+    cpu.irq_nmi = 0  ;
+	cpu.irq_nmi_delay=0;
+	cpu.irq_pending=0;
 }
 
 /* CPU 复位 */
@@ -985,6 +991,7 @@ uint64_t cpu_clock() {
 
 /* CPU 运行指定 Cycle */
 
+/*
 void cpu_run(int cycles) {
     int tmp = cycles;
     uint8_t opcode;
@@ -1004,6 +1011,7 @@ void cpu_run(int cycles) {
 
     cpu_cycles += tmp - cycles;
 }
+*/
 
 /*
 void cpu_run(int cycles) {
@@ -1221,6 +1229,7 @@ void cpu_unset_flag(uint8_t flag)
 	cpu.p &= ~(1 << flag);
 }
 
+/*
 void cpu_interrupt() {
     if(ppu_generate_nmi()) {
         //SetFlag(B, 0);
@@ -1235,3 +1244,79 @@ void cpu_interrupt() {
         cpu.pc = memory_read_word(0xfffa);
     }
 }
+*/
+
+/* NMI：边沿触发，不可屏蔽，由PPU VBlank拉高触发 */
+static inline void cpu_nmi(void) {
+    cpu_stack_push_word(cpu.pc);     // 压PC
+    cpu.U = 1;                // bit5=1（硬件保留）
+    cpu.B = 0;                // bit4=0（NMI不置B）                    // 设U
+                       // 清B（NMI不是BRK）
+    cpu_stack_push_byte(cpu.p);      // 压P
+    cpu.I = 1;                     // 设I（屏蔽IRQ）
+    cpu.pc = memory_read_word(0xfffa);
+    cpu.irq_nmi = 0;          // 清除（边沿：只触发一次）
+}
+
+/* IRQ：电平触发，可屏蔽，由mapper/APU中断线拉高触发 */
+static inline void cpu_irq(void) {
+    cpu_stack_push_word(cpu.pc);     // 压PC
+    cpu.U = 1;
+    cpu.B = 0;                    // 设U
+                       // 清B（外部IRQ不是BRK）
+    cpu_stack_push_byte(cpu.p);      // 压P
+    cpu.I = 1;                    // 设I
+    cpu.pc = memory_read_word(0xfffe);
+}
+
+void cpu_run(int cycles) {
+    cycles += cpu_cycles;             // 吸收上轮剩余（负数=还欠的预算）
+    int tmp = cycles;
+    int additional_cycles;
+    uint8_t opcode;
+    //printf(".........%d\n", cycles);
+    while (cycles > 0) {
+        additional_cycles = 0;
+        //uint8_t prev_I = (cpu.p & P_I) ? 1 : 0;  // 保存执行前的I
+        uint8_t prev_I = cpu.I;  // 保存执行前的I
+
+        // ---- 取指 ----
+        opcode = memory_read_byte(cpu.pc);
+        cpu.pc++;
+
+        // ---- 执行 ----
+        Instruction* ins = &opcode_table[opcode];
+        ins->handler();
+
+        // RTI(0x40)例外：恢复的I立即生效
+        if (opcode == 0x40) {
+            prev_I = cpu.I;
+        }
+
+        // ---- NMI检查 ----
+        if (cpu.irq_nmi) {
+            cpu_nmi();
+            cpu.irq_nmi = 0;          // 清标志（边沿：只触发一次）
+            additional_cycles += 7;
+        }
+
+        // ---- NMI延迟（VBlank中写$2000，下条指令边界才触发）----
+        if (cpu.irq_nmi_delay && --cpu.irq_nmi_delay == 0) {
+            cpu.irq_nmi = 1;
+        }
+
+        // ---- IRQ检查 ----
+        if (prev_I == 0 && cpu.irq_pending) {
+            cpu_irq();
+            // 不清 irq_pending（电平：handler里手动ack）
+            additional_cycles += 7;
+        }
+
+        // ---- 扣减 ----
+        cycles -= (int)ins->cycles + additional_cycles;
+    }
+    //printf("cycles = %d  %d\n",cycles, tmp);
+    //cpu_cycles += tmp - cycles;       // 存回余数
+    cpu_cycles = cycles;
+}
+
