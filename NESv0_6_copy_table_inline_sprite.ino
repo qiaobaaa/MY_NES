@@ -44,6 +44,7 @@ CPU cpu;
 PPU ppu;
 Cartridge cart;
 nes_joypad joypadd;
+uint8_t sprite_num = 0;
 //uint16_t screen[260 * 260];
 uint16_t screen[256 * 242];
 
@@ -89,8 +90,8 @@ void setup() {
 void loop() {
   //File romFile = SD_MMC.open("/gongfu.nes", FILE_READ);
   //File romFile = SD_MMC.open("/gongfuz.nes", FILE_READ);
-  //File romFile = SD_MMC.open("/jingang.nes", FILE_READ);
-  File romFile = SD_MMC.open("/super.nes", FILE_READ);
+ File romFile = SD_MMC.open("/jingang.nes", FILE_READ);
+  //File romFile = SD_MMC.open("/super.nes", FILE_READ);
   //File romFile = SD_MMC.open("/70.nes", FILE_READ);
   //File romFile = SD_MMC.open("/7100.nes", FILE_READ);
   //File romFile = SD_MMC.open("/tanke.nes", FILE_READ);
@@ -259,6 +260,8 @@ void emu_run() {
     //ppu.STATUS_S = 0;
     //ppu.STATUS_O = 0;
      uint32_t start = micros(); 
+     ppu.scanline++;
+     button();
     // ═══ 262 行统一循环（含可见 + vblank + pre - render）═══
     for (int i = 0; i < 262; i++) {
       //1. 计算本行 CPU ticks（分数累加）
@@ -272,21 +275,23 @@ void emu_run() {
       //{
       //    ticks = 113;
       //}
-
+      ppu.scanline++;
       //2. 可见行(0~239) 才渲染
       if (i < 240) {
-        if (ppu.mask.MASK_s) {
-          //prepare_sprite_scanline();
+        if (ppu.mask.MASK_s && i!= 0) {
+          prepare_sprite_scanline(i);
         }
 
         if (ppu.mask.MASK_b) {
           ppu_draw_background_scanline();
+          //ppu_draw_background_scanlinee(false);
+          //ppu_draw_background_scanlinee(true);
         } else {
           fill_line(i);
         }
 
-        if (ppu.mask.MASK_s) {
-          //ppu_draw_sprite_scanline(i);
+        if (ppu.mask.MASK_s && sprite_num!= 0 && i!=0) {
+          ppu_draw_sprite_scanline(i);
         }
 
         //# 3. CPU 执行 — 前半段(dot 0~254)
@@ -297,6 +302,7 @@ void emu_run() {
         if (ppu.mask.MASK_b || ppu.mask.MASK_s) {
           ppu.oamaddr = 0;
           // https://www.nesdev.org/wiki/PPU_scrolling#At_dot_256_of_each_scanline
+          
           if ((ppu.v.fine_y) < 7) {
             ppu.v.fine_y++;
           } else {
@@ -315,6 +321,7 @@ void emu_run() {
           // https://www.nesdev.org/wiki/PPU_scrolling#At_dot_257_of_each_scanline
           // v: ....A.. ...BCDEF <- t: ....A.. ...BCDEF
           ppu.v.reg = (ppu.v.reg & (uint16_t)0xFBE0) | (ppu.t.reg & (uint16_t)0x041F);
+          
         }
 
         //if (nes->nes_mapper.mapper_hsync) {
@@ -324,18 +331,22 @@ void emu_run() {
         //# 5. CPU 执行 — 后半段(dot 255~340)
         //cpu_execute(nes, ticks - nes.timing.line_split);  //# 28 or 29
         cpu_run(ticks - 85);
+        sprite_num = 0;
       } else {
         if (i == 240) {
           ppu.status.STATUS_V = 1;  //# VBlank 开始  Set VBlank flag (241 line)
           if (ppu.ctrl.CTRL_V){
             cpu.irq_nmi = 1;
           }
+          //cpu.irq_nmi = 1;
           //if (nes->nes_mapper.mapper_vsync)
             //nes->nes_mapper.mapper_vsync(nes);
         }
 
         if (i == 261) {
           ppu.status.ppu_status = 0;  // Clear:VBlank,Sprite 0,Overflow
+          ppu.scanline = -1;
+          //printf("BG palette: %d\n", ppu.ram[0x3F00]);
         }
 
         //cpu_execute(nes, ticks);
@@ -357,8 +368,8 @@ void emu_run() {
     gfx->draw16bitRGBBitmap(32, 0, screen, 256, 240);
     start = micros() - start;
         //printf("cpu time = %u\n",s);
-        printf("all time = %u\n",start);
-    printf("666\n");
+    printf("all time = %u\n",start);
+    //printf("666\n");
     //nes_frame(nes);  //# 输入 / 退出检查
   }
 }

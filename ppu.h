@@ -112,10 +112,15 @@ typedef struct PPU {
     uint8_t mirror_type;
 
     bool ppu_sprite_hit_occured;
+
+    //uint16_t ppuscroll;  // 2005: PPU 滚动位置寄存器，WRITE x2
+    uint8_t ppuscroll_x, ppuscroll_y;  // 将 PPUSCROLL 寄存器分为 X 和 Y 两个方向
+    bool scroll_received_x;
 } PPU;
 
 extern PPU ppu;
 extern uint16_t screen[256 * 242];
+extern uint8_t sprite_num;
 
 uint8_t ppu_register_read(uint16_t address);
 void ppu_register_write(uint16_t address, uint8_t data);
@@ -125,7 +130,7 @@ void ppu_run(int cycles);
 
 void ppu_draw_background_scanline();
 void ppu_draw_sprite_scanline(uint8_t scanline);
-void prepare_sprite_scanline();
+void prepare_sprite_scanline(uint8_t scanline);
 
 void ppu_sprram_write(uint8_t data);
 void ppu_copy(uint16_t address, uint8_t* source, int length);
@@ -137,6 +142,8 @@ static inline void pixbuf_add(uint16_t x, uint16_t y, uint8_t idx);
 void pixbuf_addd(uint16_t x);
 
 void fill_line(uint8_t scanline);
+
+void ppu_draw_background_scanlinee(bool mirror);
 
 const uint16_t palette_rgb565[64] = {
     0x8410, // RGB567(0x80,0x80,0x80)

@@ -21,6 +21,7 @@ static inline uint8_t memory_read_byte(uint16_t address) {
             //return interal_ram[address % 0x0800];
             return interal_ram[address & 0x07FF];
         case 1:                        // 2000 ~ 3FFF, PPU 寄存器
+            //printf("111   %x\n", address);
             return ppu_register_read(address);
         case 2:                      // APU 与 IO 寄存器
             // cpu.a = 0x01;;
@@ -35,14 +36,15 @@ static inline uint8_t memory_read_byte(uint16_t address) {
             return ret_val;}
             */
         case 3:                        // Save RAM
-            //return save_ram[address - 0x6000];
-            return interal_ram[address & 0x1FFF];
+            return save_ram[address - 0x6000];
+            //return interal_ram[address & 0x1FFF];
         default:                       // PRG ROM
             return prg_rom_ptr[(address - 0x8000) % prg_rom_size];
     }
 }
 
 static inline uint16_t memory_read_word(uint16_t address) {
+    //printf("000   %x\n", address);
     return memory_read_byte(address) + (memory_read_byte(address + 1) << 8);
 }
 
@@ -72,6 +74,7 @@ static inline void memory_write_byte(uint16_t address, uint8_t data) {
                 //data |= 0x20;
                 //printf("FORCED 8x16 MODE: 0x%02X\n", data);
             //}
+            //printf("789   %x\n", address);
             ppu_register_write(address, data);
             //if(address == 0x2000)
             //{
@@ -82,8 +85,8 @@ static inline void memory_write_byte(uint16_t address, uint8_t data) {
             io_write(address, data);
             break;
         case 3:                        // Save RAM
-            //save_ram[address - 0x6000] = data;
-            interal_ram[address & 0x1FFF] = data;
+            save_ram[address - 0x6000] = data;
+            //interal_ram[address & 0x1FFF] = data;
             break;
         default:                       // PRG ROM
             prg_rom_ptr[(address - 0x8000) % prg_rom_size] = data;
@@ -91,6 +94,6 @@ static inline void memory_write_byte(uint16_t address, uint8_t data) {
 }
 
 static inline void memory_write_word(uint16_t address, uint16_t data) {
-    memory_write_byte(address, data & 0xFF);
+    //printf("456   %x\n", address);
     memory_write_byte(address + 1, data >> 8);
 }

@@ -173,10 +173,33 @@ static inline void cpu_modify_flag(uint8_t flag, int value) {
 }
 */
 /* 栈操作 */
+/*
 static inline void cpu_stack_push_byte(uint8_t data) { memory_write_byte(0x100 + cpu.sp, data); cpu.sp -= 1; }
 static inline void cpu_stack_push_word(uint16_t data) { memory_write_word(0x0ff + cpu.sp, data); cpu.sp -= 2; }
 static inline uint8_t  cpu_stack_pop_byte() { cpu.sp += 1; return memory_read_byte(0x100 + cpu.sp); }
 static inline uint16_t cpu_stack_pop_word() { cpu.sp += 2; return memory_read_word(0x0ff + cpu.sp); }
+*/
+static inline void cpu_stack_push_byte(uint8_t data) {
+    memory_write_byte(0x100 + cpu.sp, data);
+    cpu.sp--;
+}
+
+static inline void cpu_stack_push_word(uint16_t data) {
+    cpu_stack_push_byte((data >> 8) & 0xFF);  // 高字节先
+    cpu_stack_push_byte(data & 0xFF);          // 低字节后
+}
+
+static inline uint8_t cpu_stack_pop_byte(void) {
+    cpu.sp++;
+    return memory_read_byte(0x100 + cpu.sp);
+}
+
+static inline uint16_t cpu_stack_pop_word(void) {
+    uint8_t low  = cpu_stack_pop_byte();
+    uint8_t high = cpu_stack_pop_byte();
+    return (uint16_t)((high << 8) | low);
+}
+
 
 /* 存储 CPU 经过寻址后得到的地址和该地址对应的值 */
 uint16_t op_address;
@@ -345,6 +368,75 @@ static inline void cpu_addressing_indirect_y() {
         additional_cycles = 0;
     }
 }
+
+/*store  专用寻址（不读取目标地址，避免 PPU $2007 幽灵读取）     **************/
+static inline void cpu_addressing_zeropage_store() {
+    op_address = memory_read_byte(cpu.pc);
+    cpu.pc++;
+    additional_cycles = 0;
+}
+
+static inline void cpu_addressing_zeropage_x_store() {
+    op_address = (memory_read_byte(cpu.pc) + cpu.x) & 0xff;
+    cpu.pc++;
+    additional_cycles = 0;
+}
+
+static inline void cpu_addressing_zeropage_y_store() {
+    op_address = (memory_read_byte(cpu.pc) + cpu.y) & 0xff;
+    cpu.pc++;
+    additional_cycles = 0;
+}
+
+static inline void cpu_addressing_absolute_store() {
+    uint16_t base = memory_read_word(cpu.pc);
+    op_address = base;
+    cpu.pc += 2;
+    additional_cycles = 0;
+}
+
+static inline void cpu_addressing_absolute_x_store() {
+    uint16_t base = memory_read_word(cpu.pc);
+    op_address = base + cpu.x;
+    cpu.pc += 2;
+    if ((op_address >> 8) != (base >> 8)) {               //用base比较
+        additional_cycles = 1;
+    } else {
+        additional_cycles = 0;
+    }
+}
+
+static inline void cpu_addressing_absolute_y_store() {
+    uint16_t base = memory_read_word(cpu.pc);
+    op_address = (base + cpu.y) & 0xffff;
+    cpu.pc += 2;
+    if ((op_address >> 8) != (base >> 8)) {                //用base比较
+        additional_cycles = 1;
+    } else {
+        additional_cycles = 0;
+    }
+}
+
+static inline void cpu_addressing_indirect_x_store() {
+    uint8_t arg_addr = memory_read_byte(cpu.pc);
+    op_address = (memory_read_byte((arg_addr + cpu.x + 1) & 0xff) << 8) | memory_read_byte((arg_addr + cpu.x) & 0xff);
+    cpu.pc++;
+    additional_cycles = 0;
+}
+
+static inline void cpu_addressing_indirect_y_store() {
+    uint8_t arg_addr = memory_read_byte(cpu.pc);
+    uint16_t base = ((memory_read_byte((arg_addr + 1) & 0xff) << 8) | memory_read_byte(arg_addr));
+    op_address = (base + cpu.y) & 0xffff;
+    cpu.pc++;
+    if ((op_address >> 8) != (base >> 8)) {
+        additional_cycles = 1;
+    } else {
+        additional_cycles = 0;
+    }
+}
+//****************
+
 
 /* CPU 指令 ************************************************************/
 
@@ -613,6 +705,7 @@ void cpu_adc_abs_y(void) { cpu_addressing_absolute_y();  cpu_adc(); }
 void cpu_adc_abs_x(void) { cpu_addressing_absolute_x();  cpu_adc(); }
 
 /* ---------- STA ---------- */
+/*
 void cpu_sta_ind_x(void) { cpu_addressing_indirect_x();  cpu_sta(); }
 void cpu_sta_zp(void) { cpu_addressing_zeropage();    cpu_sta(); }
 void cpu_sta_abs(void) { cpu_addressing_absolute();    cpu_sta(); }
@@ -620,16 +713,38 @@ void cpu_sta_ind_y(void) { cpu_addressing_indirect_y();  cpu_sta(); }
 void cpu_sta_zp_x(void) { cpu_addressing_zeropage_x();  cpu_sta(); }
 void cpu_sta_abs_y(void) { cpu_addressing_absolute_y();  cpu_sta(); }
 void cpu_sta_abs_x(void) { cpu_addressing_absolute_x();  cpu_sta(); }
+*/
+//修改版
+void cpu_sta_ind_x(void) { cpu_addressing_indirect_x_store();  cpu_sta(); }
+void cpu_sta_zp(void)    { cpu_addressing_zeropage_store();    cpu_sta(); }
+void cpu_sta_abs(void)   { cpu_addressing_absolute_store();    cpu_sta(); }
+void cpu_sta_ind_y(void) { cpu_addressing_indirect_y_store();  cpu_sta(); }
+void cpu_sta_zp_x(void)  { cpu_addressing_zeropage_x_store();  cpu_sta(); }
+void cpu_sta_abs_y(void) { cpu_addressing_absolute_y_store();  cpu_sta(); }
+void cpu_sta_abs_x(void) { cpu_addressing_absolute_x_store();  cpu_sta(); }
+
 
 /* ---------- STX ---------- */
+/*
 void cpu_stx_zp(void) { cpu_addressing_zeropage();    cpu_stx(); }
 void cpu_stx_abs(void) { cpu_addressing_absolute();    cpu_stx(); }
 void cpu_stx_zp_y(void) { cpu_addressing_zeropage_y();  cpu_stx(); }
+*/
+//修改版
+void cpu_stx_zp(void)   { cpu_addressing_zeropage_store();     cpu_stx(); }
+void cpu_stx_abs(void)  { cpu_addressing_absolute_store();     cpu_stx(); }
+void cpu_stx_zp_y(void) { cpu_addressing_zeropage_y_store();   cpu_stx(); }
 
 /* ---------- STY ---------- */
+/*
 void cpu_sty_zp(void) { cpu_addressing_zeropage();    cpu_sty(); }
 void cpu_sty_abs(void) { cpu_addressing_absolute();    cpu_sty(); }
 void cpu_sty_zp_x(void) { cpu_addressing_zeropage_x();  cpu_sty(); }
+*/
+//修改版
+void cpu_sty_zp(void)   { cpu_addressing_zeropage_store();     cpu_sty(); }
+void cpu_sty_abs(void)  { cpu_addressing_absolute_store();     cpu_sty(); }
+void cpu_sty_zp_x(void) { cpu_addressing_zeropage_x_store();   cpu_sty(); }
 
 /* ---------- LDA ---------- */
 void cpu_lda_ind_x(void) { cpu_addressing_indirect_x();  cpu_lda(); }
@@ -1248,6 +1363,7 @@ void cpu_interrupt() {
 
 /* NMI：边沿触发，不可屏蔽，由PPU VBlank拉高触发 */
 static inline void cpu_nmi(void) {
+    /*
     cpu_stack_push_word(cpu.pc);     // 压PC
     cpu.U = 1;                // bit5=1（硬件保留）
     cpu.B = 0;                // bit4=0（NMI不置B）                    // 设U
@@ -1256,6 +1372,14 @@ static inline void cpu_nmi(void) {
     cpu.I = 1;                     // 设I（屏蔽IRQ）
     cpu.pc = memory_read_word(0xfffa);
     cpu.irq_nmi = 0;          // 清除（边沿：只触发一次）
+*/
+
+     cpu.U = 1;                // bit5=1（硬件保留）
+    cpu.B = 0;
+        cpu_stack_push_word(cpu.pc);
+        cpu_stack_push_byte(cpu.p);
+        cpu.pc = memory_read_word(0xfffa);
+        cpu.irq_nmi = 0; 
 }
 
 /* IRQ：电平触发，可屏蔽，由mapper/APU中断线拉高触发 */
@@ -1272,7 +1396,7 @@ static inline void cpu_irq(void) {
 void cpu_run(int cycles) {
     cycles += cpu_cycles;             // 吸收上轮剩余（负数=还欠的预算）
     int tmp = cycles;
-    int additional_cycles;
+    //int additional_cycles;
     uint8_t opcode;
     //printf(".........%d\n", cycles);
     while (cycles > 0) {
@@ -1282,6 +1406,7 @@ void cpu_run(int cycles) {
 
         // ---- 取指 ----
         opcode = memory_read_byte(cpu.pc);
+        //printf("%d \n", opcode);
         cpu.pc++;
 
         // ---- 执行 ----
@@ -1296,7 +1421,7 @@ void cpu_run(int cycles) {
         // ---- NMI检查 ----
         if (cpu.irq_nmi) {
             cpu_nmi();
-            cpu.irq_nmi = 0;          // 清标志（边沿：只触发一次）
+            //cpu.irq_nmi = 0;          // 清标志（边沿：只触发一次）
             additional_cycles += 7;
         }
 

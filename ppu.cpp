@@ -14,7 +14,7 @@ typedef struct sprite {
 } SPRITE;
 
 SPRITE sprite_tem[8];
-uint8_t sprite_num = 0;       //这一行显示几个精灵
+//uint8_t sprite_num = 0;       //这一行显示几个精灵
 uint8_t sprite_scanline = 0;  //精灵实际在第几行显示；
 //uint8_t ram[0x4000];  // PPU可以看见的16Kb内部 VRAM
 //uint8_t sprite_ram[0x100];
@@ -24,6 +24,16 @@ uint8_t sprite_scanline = 0;  //精灵实际在第几行显示；
 //Name Table首地址
 static inline uint16_t ppu_base_nametable_address() {
   switch (ppu.ctrl.CTRL_N) {
+    case 0: return 0x2000;
+    case 1: return 0x2400;
+    case 2: return 0x2800;
+    case 3: return 0x2c00;
+    default: return 0x2000;
+  }
+}
+
+static inline uint16_t ppu_select_nametable_address(uint8_t id) {
+  switch (id) {
     case 0: return 0x2000;
     case 1: return 0x2400;
     case 2: return 0x2800;
@@ -176,7 +186,15 @@ uint8_t ppu_ram_read(uint16_t address) {
 }
 
 void ppu_ram_write(uint16_t address, uint8_t data) {
+  if(address == 0x2100)
+  {
+    printf("....%x   %d\n",address, data);
+  }
   uint16_t addr = address & (uint16_t)0x3FFF;
+  if(address == 0x2100)
+  {
+    printf("....%x   %d\n",address, data);
+  }
   //pattern table区域，不存在镜像直接读取
   if (addr >= 0x0000 && addr <= 0x1FFF) {
     //ppu.ram[addr] = data;
@@ -247,10 +265,14 @@ uint8_t ppu_register_read(uint16_t address) {
           ppu.read_buffer = ppu_ram_read(v_addr);
         } else  //进入调色板区域
         {
+          printf("hahhahha\n");
           data = ppu_ram_read(v_addr);
-          ppu.read_buffer = ppu_ram_read((v_addr & 0x0FFF) | 0x2000);
+          //ppu.read_buffer = ppu_ram_read((v_addr & 0x0FFF) | 0x2000);
+          //ppu.read_buffer = ppu_ram_read(v_addr);
+          //data = ppu.read_buffer;
         }
         //After access, the video memory address will increment by an amount determined by bit 2 of $2000.
+        
         ppu.v.reg += (uint16_t)((ppu.ctrl.CTRL_I) ? 32 : 1);
         //ppu.v.reg = (ppu.v.reg + ((ppu.ctrl.CTRL_I) ? 32 : 1)) & (uint16_t)0x3FFF;
         ppu.open_bus = data;
@@ -290,6 +312,7 @@ void ppu_register_write(uint16_t address, uint8_t data) {
             然而，部分模拟器选择省略此行为，以换取对极少数存在此 bug 的 ROM 的兼容性。读者应根据自身目标（硬件研究 vs 游戏兼容）决定是否实现。
             本模拟器（或本书推荐做法）选择完整实现，以忠实还原硬件行为。
 			*/
+      cpu.irq_nmi_delay = 1;
         }
         break;
       }
@@ -310,8 +333,9 @@ void ppu_register_write(uint16_t address, uint8_t data) {
         ppu.fine_x = data & 0x7;
         ppu.w = 1;
       } else {
-        ppu.t.coarse_y = (data & 0xF8) >> 3;
         ppu.t.fine_y = data & 0x7;
+        ppu.t.coarse_y = (data & 0xF8) >> 3;
+        //ppu.t.fine_y = data & 0x7;
         ppu.w = 0;
       }
       break;
@@ -326,15 +350,37 @@ void ppu_register_write(uint16_t address, uint8_t data) {
         ppu.t.reg = (ppu.t.reg & 0x00FF) | ((uint16_t)(data & 0x3F) << 8);
         ppu.w = 1;
       } else {
+        /*
+        printf("==== 执行2006第二次写，覆盖v！t=%04X → v=%04X ====\n", ppu.t.reg, ppu.v.reg);
         ppu.t.reg = (ppu.t.reg & (uint16_t)0xFF00) | (uint16_t)data;
+        if(ppu.t.reg == 0x2100){
+        printf("%x \n", ppu.t.reg);}
         ppu.v.reg = ppu.t.reg;
         ppu.w = 0;
+        */
+        //printf("[1] 进入第二次2006写，修改前 t.reg = %04X\n", ppu.t.reg);
+
+    ppu.t.reg = (ppu.t.reg & (uint16_t)0xFF00) | (uint16_t)data;
+    //printf("[2] 合并data之后 t.reg = %04X\n", ppu.t.reg);
+
+    ppu.v.reg = ppu.t.reg;
+    //printf("[3] 赋值给v后 v.reg = %04X\n", ppu.v.reg);
+
+    ppu.w = 0;
       }
       break;
     case 7:
+    //if(ppu.v.reg == 0x2100)
+     //  {
+         //printf("v.reg @@@@ =  %x  %d\n", ppu.v.reg, data);
+     //  }
+     //printf("v.reg  begin  @@@@ =  %x  %d\n", ppu.v.reg, data);
       ppu_ram_write(ppu.v.reg, data);
-      //ppu.v.reg += (uint16_t)((ppu.ctrl.CTRL_I) ? 32 : 1);
-      ppu.v.reg = (ppu.v.reg + ((ppu.ctrl.CTRL_I) ? 32 : 1)) & (uint16_t)0x3FFF;
+      ppu.v.reg += (uint16_t)((ppu.ctrl.CTRL_I) ? 32 : 1);
+     // ppu.v.reg += (uint16_t)((ppu.ctrl.CTRL_I) ? 32 : 1);
+     // printf("v.reggg after   =   %x\n", ppu.v.reg);
+
+      //ppu.v.reg = (ppu.v.reg + ((ppu.ctrl.CTRL_I) ? 32 : 1)) & (uint16_t)0x3FFF;
       break;
     default:
       printf("nes_write_ppu_register error %X %X\n", address, data);
@@ -383,13 +429,18 @@ void ppu_draw_background_scanline() {
 
   uint8_t y_in_tile = ppu.v.fine_y;
   uint8_t x_in_tile = ppu.fine_x;
-
+  //printf("nametable_id  = %d\n", nametable_id);
   uint8_t real_scanline = (dy << 3) + y_in_tile;  //真正在那一行，加法 + 的优先级高于左移 <<
   for (uint8_t tile_x = dx; tile_x < 32; tile_x++) {
     //int tile_index = ppu_ram_read(ppu_base_nametable_address(nametable_id) + tile_x + tile_y_offset);
-    int tile_index = ppu_ram_read(ppu_base_nametable_address() + tile_x + tile_y_offset);
+    //int tile_index = ppu_ram_read(ppu_base_nametable_address() + tile_x + tile_y_offset);
+    int tile_index = ppu_ram_read(ppu_select_nametable_address(nametable_id) + tile_x + tile_y_offset);
+    if(tile_x == 0 && dy==8){
+    //printf("tile_index = %d,   tile_x = %d,  tile_y_offset = %d   %x\n", tile_index,  tile_x, tile_y_offset,  ppu_select_nametable_address(nametable_id) + tile_x + tile_y_offset);
+    //tile_index=36;
+    }
     uint16_t tile_address = ppu_background_pattern_table_address() + 16 * tile_index;
-
+    //printf("tile_address =  %x\n", tile_address);
     uint8_t l = ppu_ram_read(tile_address + y_in_tile);
     uint8_t h = ppu_ram_read(tile_address + y_in_tile + 8);
 
@@ -399,7 +450,8 @@ void ppu_draw_background_scanline() {
       if (color != 0) {
         //因为1个属性表管16个tile，所以tile_x >>2也就是/4，(real_scanline >> 5) * 8就等于真实的行数/32再乘8
         //uint16_t attribute_address = (ppu_base_nametable_address(nametable_id) + 0x3C0 + (tile_x >> 2) + (real_scanline >> 5) * 8);
-        uint16_t attribute_address = (ppu_base_nametable_address() + 0x3C0 + (tile_x >> 2) + (real_scanline >> 5) * 8);
+        //uint16_t attribute_address = (ppu_base_nametable_address() + 0x3C0 + (tile_x >> 2) + (real_scanline >> 5) * 8);
+        uint16_t attribute_address = (ppu_select_nametable_address(nametable_id) + 0x3C0 + (tile_x >> 2) + (real_scanline >> 5) * 8);
         //一个nametable中的后64字节是属性表，其中1个字节管理16个tile
         //每个 4×4 tile 区域对应属性表 1 字节
         //bit7-6: 左上调色板
@@ -461,7 +513,8 @@ void ppu_draw_background_scanline() {
   //注意这里一定要<= dx, 因为fine_x精细分割分割的就是这个瓦片
   for (uint8_t tile_x = 0; tile_x <= dx; tile_x++) {
     //int tile_index = ppu_ram_read(ppu_base_nametable_address(nametable_id) + tile_x + tile_y_offset);
-    int tile_index = ppu_ram_read(ppu_base_nametable_address() + tile_x + tile_y_offset);
+    //int tile_index = ppu_ram_read(ppu_base_nametable_address() + tile_x + tile_y_offset);
+    int tile_index = ppu_ram_read(ppu_select_nametable_address(nametable_id) + tile_x + tile_y_offset);
     uint16_t tile_address = ppu_background_pattern_table_address() + 16 * tile_index;
 
     uint8_t l = ppu_ram_read(tile_address + y_in_tile);
@@ -483,7 +536,8 @@ void ppu_draw_background_scanline() {
       if (color != 0) {
         //因为1个属性表管16个tile，所以tile_x >>2也就是/4，(real_scanline >> 5) * 8就等于真实的行数/32再乘8
         //uint16_t attribute_address = (ppu_base_nametable_address(nametable_id) + 0x3C0 + (tile_x >> 2) + (real_scanline >> 5) * 8);
-        uint16_t attribute_address = (ppu_base_nametable_address() + 0x3C0 + (tile_x >> 2) + (real_scanline >> 5) * 8);
+        //uint16_t attribute_address = (ppu_base_nametable_address() + 0x3C0 + (tile_x >> 2) + (real_scanline >> 5) * 8);
+        uint16_t attribute_address = (ppu_select_nametable_address(nametable_id) + 0x3C0 + (tile_x >> 2) + (real_scanline >> 5) * 8);
         //一个nametable中的后64字节是属性表，其中1个字节管理16个tile
         bool top = (real_scanline % 32) < 16;
         //用来确定是左边还是右边，但是left的判断有问题，应该是bool left = (tile_x % 4 < 2);
@@ -515,7 +569,12 @@ void ppu_draw_background_scanline() {
   }
 }
 
-void prepare_sprite_scanline() {
+void prepare_sprite_scanline(uint8_t scanline) {
+  //0行不会有精灵
+  if(scanline == 0)
+  {
+    return;
+  }
   uint8_t sprite_count = 0;
   //uint8_t sprite_size = ppu_sprite_height() ? 16 : 8;
   uint8_t sprite_size = ppu_sprite_height();
@@ -525,12 +584,17 @@ void prepare_sprite_scanline() {
   int row = 0;
   uint16_t tile_address = 0;
 
-  uint8_t target_scanline = ppu.scanline + 1;
+  //uint8_t target_scanline = ppu.scanline + 1;
+  uint8_t target_scanline = scanline;
 
   for (n = 0; n < 0x100; n += 4) {
     uint8_t sprite_x = ppu.sprite_ram[n + 3];
     uint8_t sprite_y = ppu.sprite_ram[n] + 1;  //加1是为了表示精灵的实际位置，如果不加的话后续还要做判断
-
+    if(ppu.sprite_ram[n]>=239)
+    {
+      //printf("6666666666666      %x\n", ppu.sprite_ram[n]);
+      continue;
+    }
     // 2. 使用 16 位整数进行比较，防止 sprite_y + sprite_size 溢出 255
     if ((uint16_t)sprite_y > target_scanline || (uint16_t)target_scanline >= (uint16_t)sprite_y + sprite_size) {
       continue;
@@ -543,7 +607,8 @@ void prepare_sprite_scanline() {
     if (sprite_count > 8) {
       //ppu.status.STATUS_O = 1;  //精灵溢出位置一，并跳出循环，因为一行最多8个不会再多
       ppu_set_sprite_overflow(true);
-      continue;
+      //continue;
+      break;
     }
 
     //判断是否水平镜像或者垂直镜像
@@ -650,6 +715,11 @@ void prepare_sprite_scanline() {
 }
 
 void ppu_draw_sprite_scanline(uint8_t scanline){
+  //0行不会有精灵
+  if(scanline == 0)
+  {
+    return;
+  }
   //if (ppu_show_sprites() && ppu.scanline > 0 && ppu.scanline < 240 && ppu.scanline == sprite_scanline && sprite_num != 0) {
   if (ppu_show_sprites() && sprite_num != 0) {
     int background_id = ppu_ram_read(0x3f00);
@@ -678,10 +748,10 @@ void ppu_draw_sprite_scanline(uint8_t scanline){
           }
           */
           //判断精灵0 hit触发, 一定是精灵0，而不是精灵1之类的，因为精灵1也可能在0号位置
-          //if (ppu_show_background() && !ppu_sprite_hit_occured && sprite_tem[i].id == 0 && ppu_screen_background[sprite_tem[i].x + j][ppu.scanline] != 0) {
-            //ppu_set_sprite_0_hit(true);
+          if ((ppu.mask.MASK_b || ppu.mask.MASK_s) && !ppu.status.STATUS_S && sprite_tem[i].id == 0 && ppu_screen_background[sprite_tem[i].x + j][ppu.scanline] != 0) {
+            ppu_set_sprite_0_hit(true);
             //ppu_sprite_hit_occured = true;
-          //}
+          }
         }
       }
     }
@@ -711,6 +781,7 @@ void ppu_init() {
   ppu.v.reg = 0;
   ppu.t.reg = 0;
   ppu.status.ppu_status |= 0xa0;
+  ppu.w=0;
   //ppu.ppudata = 0;
   //ppu_2007_first_read = true;
 
@@ -747,13 +818,15 @@ void ppu_init() {
 }
 
 void ppu_set_mirroring(uint8_t mirroring) {
+  //NES_MIRROR_HORIZONTAL
+  //NES_MIRROR_VERTICAL
   if(mirroring)
   {
-    ppu.mirror_type =NES_MIRROR_HORIZONTAL;
+    ppu.mirror_type = NES_MIRROR_VERTICAL;
   }
   else
   {
-    ppu.mirror_type =NES_MIRROR_VERTICAL;//NES_MIRROR_HORIZONTAL
+    ppu.mirror_type = NES_MIRROR_HORIZONTAL;
   }
   //ppu.mirroring = mirroring;
   //ppu.mirroring_xor = 0x400 << mirroring;
@@ -770,5 +843,138 @@ void fill_line(uint8_t scanline) {
   int idx = ppu_ram_read(0x3f00);
   for (int i = 0; i < 256; i++) {
     pixbuf_add(i, scanline, idx);
+  }
+}
+
+void ppu_draw_background_scanlinee(bool mirror) {
+  int tile_x;
+  //nes是256列像素，240行高，一个标准tile是8*8像素，所以这里就是32 = 256/8
+  //但是这里需要注意的是精灵是有大精灵是由两个tile组成，但背景都是由一个个tile组成不存在特殊情况
+  for (tile_x = ppu_show_background_in_leftmost_8px() ? 0 : 1; tile_x < 32; tile_x++) {
+    // Skipping off-screen pixels
+    if (((tile_x << 3) - ppu.ppuscroll_x + (mirror ? 256 : 0)) > 256)
+      continue;
+
+    // 通过 tile 在屏幕上的位置，获取 tile 在内存中的地址
+    //ppu.scanline >>3 就等于 ppu.scanline / 8
+    int tile_y = ppu.scanline >> 3;
+
+    //tile_y << 5 就等于 tile_y *32，一行有32个tile
+    // 计算 tile 在 nametable 中的索引（tile_y * 32 + tile_x）
+    int tile_index = ppu_ram_read(ppu_base_nametable_address() + tile_x + (tile_y << 5) + (mirror ? 0x400 : 0));
+    //tile_index就是计算出来到底这个地方用的第几个tile
+    //而一个tile的大小是16字节，所以这里读取tile的地址是初始地址 + 16 * tile_index
+    // 根据 tile_index 计算 pattern table 中的图形数据地址
+    uint16_t tile_address = ppu_background_pattern_table_address() + 16 * tile_index;
+
+    //y_in_tile计算出来是tile的具体哪一行
+    // y_in_tile: 当前扫描线在 tile 内的 Y 偏移 (0-7)
+    int y_in_tile = ppu.scanline & 0x7;
+    //因为tile像素是先存了低位，再存了高位，低位大小是8字节，高位大小也是8字节
+    //这里分别拿到了tile这一行的低位和高位数据，每一个像素占2bit，一个tile=128bit==16字节
+    // NES PPU 中，每个 tile 的图形数据为 16 字节：
+    // 前 8 字节存放低位 (bit 0)
+    // 后 8 字节存放高位 (bit 1)
+    // 每个像素由这 2 bit 组成索引值 (0-3)，再结合调色板才能确定最终颜色
+    uint8_t l = ppu_ram_read(tile_address + y_in_tile);
+    uint8_t h = ppu_ram_read(tile_address + y_in_tile + 8);
+
+    int x;
+    for (x = 0; x < 8; x++) {
+      uint8_t color = ppu_l_h_addition_table[l][h][x];
+      // Color 0 is transparent
+      if (color != 0) {
+        //一个nametable中的后64字节是属性表，其中1个字节管理16个tile
+        //每个 4×4 tile 区域对应属性表 1 字节
+        //bit7-6: 左上调色板
+        //bit5-4: 右上调色板
+        //bit3-2: 左下调色板
+        //bit1-0: 右下调色板
+        //tile_x本来就是按一个tile算，所以这里要tile_x >>2 == tile_x /4, 而ppu.scanline是0 1 2 3 4 ，1一个字节列是四个tile，也就是32像素
+        //ppu.scanline >> 5 = ppu.scanline/32 ,后面 * 8，是因为一行有32tile，一个字节行管四个tile，32/4 = 8
+        // 列: tile_x >> 2 (每 4 个 tile 对应属性表 1 字节，32/4=8)   列偏移
+        // 行: scanline >> 5 (每 32 像素对应属性表 1 行，256/32=8)    行偏移
+        uint16_t attribute_address = (ppu_base_nametable_address() + (mirror ? 0x400 : 0) + 0x3C0 + (tile_x >> 2) + (ppu.scanline >> 5) * 8);
+        //用来确定上半部分还是下半部分
+        bool top = (ppu.scanline % 32) < 16;
+        //用来确定是左边还是右边，但是left的判断有问题，应该是bool left = (tile_x % 4 < 2);
+        bool left = (tile_x % 4 < 2);
+
+        uint8_t palette_attribute = ppu_ram_read(attribute_address);
+
+        //top的是高位四位,因此下半部分就需要右移4位
+        // 第一次移位：区分上下
+        // top=true  → 保持 (左上/右上)
+        // top=false → 右移4位 (左下/右下)
+
+        if (!top) {
+          palette_attribute >>= 4;
+        }
+        //左边就是在高四位或者低四位的高两位，因此右边就需要右移两位
+        // 第二次移位：区分左右
+        // left=true  → 保持 (左上/左下)
+        // left=false → 再右移2位 (右上/右下)
+        if (!left) {
+          palette_attribute >>= 2;
+        }
+        palette_attribute &= 3;
+
+        // 2. 计算总移位量
+        /*
+                int shift = 0;
+                if (top) {
+                    shift = left ? 6 : 4; // 左上移6, 右上移4  
+                }
+                else {
+                    shift = left ? 2 : 0; // 左下移2, 右下移0  
+                }
+
+                // 3. 一次性提取  
+                palette_attribute = (ppu_ram_read(attribute_address) >> shift) & 3;
+                */
+
+        //因为每个调色板占四个字节，背景有四个调色板，精灵也有四个调色板，所以这里要<<2
+        uint16_t palette_address = 0x3F00 + (palette_attribute << 2);
+        int idx = ppu_ram_read(palette_address + color);
+
+        //ppu_screen_background[(tile_x << 3) + x][ppu.scanline] = color;
+        int screen_x = (tile_x << 3) + x - ppu.ppuscroll_x + (mirror ? 256 : 0);
+        //if (screen_x >= 256) screen_x = screen_x - 256;
+        if (screen_x >= 0 && screen_x < 256 && ppu.scanline < 241) {
+          ppu_screen_background[screen_x][ppu.scanline] = color;
+          pixbuf_add(screen_x, ppu.scanline, idx);
+        }
+        //ppu_screen_background[(tile_x << 3) + x][ppu.scanline] = color;
+
+        //pixbuf_add(bg, (tile_x << 3) + x - ppu.PPUSCROLL_X + (mirror ? 256 : 0), ppu.scanline + 1, idx);
+        //pixbuf_add((tile_x << 3) + x - ppu.ppuscroll_x + (mirror ? 256 : 0), ppu.scanline + 1, idx);
+        //if(ppu.scanline<240 && (tile_x << 3) + x - ppu.ppuscroll_x + (mirror ? 256 : 0) >=0)
+        //{
+        //ppu_screen_background[(tile_x << 3) + x - ppu.ppuscroll_x + (mirror ? 256 : 0)][ppu.scanline] = color;
+        //pixbuf_add((tile_x << 3) + x - ppu.ppuscroll_x + (mirror ? 256 : 0), ppu.scanline+1, idx);
+        //}
+        /*
+                // 2. 计算总移位量  
+                int shift = 0;
+                if (top) {
+                    shift = left ? 6 : 4; // 左上移6, 右上移4  
+                }
+                else {
+                    shift = left ? 2 : 0; // 左下移2, 右下移0  
+                }
+                */
+        // 3. 一次性提取
+        //uint8_t palette_attribute = (ppu_ram_read(attribute_address) >> shift) & 3;
+      } else {
+        int id = ppu_ram_read(0x3f00);
+        int screen_x = (tile_x << 3) + x - ppu.ppuscroll_x + (mirror ? 256 : 0);
+        //if (screen_x >= 0 && screen_x < 256 && ppu.scanline < 241)
+        //pixbuf_add((tile_x << 3) + x - ppu.ppuscroll_x + (mirror ? 256 : 0), ppu.scanline, id);
+        if((ppu.scanline<240 && (tile_x << 3) + x - ppu.ppuscroll_x + (mirror ? 256 : 0) >=0))
+        {
+          pixbuf_add((tile_x << 3) + x - ppu.ppuscroll_x + (mirror ? 256 : 0), ppu.scanline, id);
+        }
+      }
+    }
   }
 }
