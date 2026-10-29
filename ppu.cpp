@@ -14,7 +14,7 @@ typedef struct sprite {
 } SPRITE;
 
 SPRITE sprite_tem[8];
-//uint8_t sprite_num = 0;       //这一行显示几个精灵
+uint8_t sprite_num = 0;       //这一行显示几个精灵
 uint8_t sprite_scanline = 0;  //精灵实际在第几行显示；
 //uint8_t ram[0x4000];  // PPU可以看见的16Kb内部 VRAM
 //uint8_t sprite_ram[0x100];
@@ -197,7 +197,7 @@ void ppu_ram_write(uint16_t address, uint8_t data) {
   }
   //pattern table区域，不存在镜像直接读取
   if (addr >= 0x0000 && addr <= 0x1FFF) {
-    //ppu.ram[addr] = data;
+    ppu.ram[addr] = data;
   }  //位于镜像区，必需进行处理不然读写不统一
   else if (addr >= 0x2000 && addr <= 0x3EFF) {
     if (ppu.mirror_type == NES_MIRROR_VERTICAL) {
@@ -273,8 +273,8 @@ uint8_t ppu_register_read(uint16_t address) {
         }
         //After access, the video memory address will increment by an amount determined by bit 2 of $2000.
         
-        ppu.v.reg += (uint16_t)((ppu.ctrl.CTRL_I) ? 32 : 1);
-        //ppu.v.reg = (ppu.v.reg + ((ppu.ctrl.CTRL_I) ? 32 : 1)) & (uint16_t)0x3FFF;
+        //ppu.v.reg += (uint16_t)((ppu.ctrl.CTRL_I) ? 32 : 1);
+        ppu.v.reg = (ppu.v.reg + ((ppu.ctrl.CTRL_I) ? 32 : 1)) & (uint16_t)0x3FFF;
         ppu.open_bus = data;
         break;
       }
@@ -375,12 +375,14 @@ void ppu_register_write(uint16_t address, uint8_t data) {
          //printf("v.reg @@@@ =  %x  %d\n", ppu.v.reg, data);
      //  }
      //printf("v.reg  begin  @@@@ =  %x  %d\n", ppu.v.reg, data);
+     
       ppu_ram_write(ppu.v.reg, data);
-      ppu.v.reg += (uint16_t)((ppu.ctrl.CTRL_I) ? 32 : 1);
+      //ppu.v.reg += (uint16_t)((ppu.ctrl.CTRL_I) ? 32 : 1);
      // ppu.v.reg += (uint16_t)((ppu.ctrl.CTRL_I) ? 32 : 1);
      // printf("v.reggg after   =   %x\n", ppu.v.reg);
 
-      //ppu.v.reg = (ppu.v.reg + ((ppu.ctrl.CTRL_I) ? 32 : 1)) & (uint16_t)0x3FFF;
+      ppu.v.reg = (ppu.v.reg + ((ppu.ctrl.CTRL_I) ? 32 : 1)) & (uint16_t)0x3FFF;
+     
       break;
     default:
       printf("nes_write_ppu_register error %X %X\n", address, data);
@@ -418,6 +420,92 @@ void ppu_run(int cycles) {
 }
 */
 
+void ppu_draw_background_scanlinee(uint8_t scanline)
+{
+	uint8_t p = 0;
+	const uint8_t dx = ppu.v.coarse_x;
+	const uint8_t dy = ppu.v.coarse_y;
+	uint8_t nametable_id = ppu.v.nametable;
+
+	const uint16_t tile_y_offset = dy << 5;
+	const uint8_t attr_y_shift = (dy & 2) << 1;  // 0或4，整行不变，区分属性表内上下半区
+	const uint16_t attr_y_base = 0x3C0 + ((dy >> 2) << 3);  // 属性表行字节偏移，整行不变
+
+	uint8_t y_in_tile = ppu.v.fine_y;
+	uint8_t x_in_tile = ppu.fine_x;
+
+	//uint8_t real_scanline = (dy << 3) + y_in_tile;
+  uint8_t real_scanline = scanline;
+
+	for (uint8_t tile_x = dx; tile_x < 32; tile_x++)
+	{
+		int tile_index = ppu_ram_read(ppu_select_nametable_address(nametable_id) + tile_x + tile_y_offset);
+		uint16_t tile_address = ppu_background_pattern_table_address() + 16 * tile_index;
+
+		uint8_t l = ppu_ram_read(tile_address + y_in_tile);
+		uint8_t h = ppu_ram_read(tile_address + y_in_tile + 8);
+
+		for (uint8_t x = x_in_tile; x < 8; x++) {
+			uint8_t color = ppu_l_h_addition_table[l][h][x];
+			if (color != 0) {
+				uint16_t attribute_address = ppu_select_nametable_address(nametable_id) + attr_y_base + (tile_x >> 2);
+				uint8_t palette = (ppu_ram_read(attribute_address) >> (attr_y_shift | (tile_x & 2))) & 3;
+
+				uint16_t palette_address = 0x3F00 + (palette << 2);
+				int idx = ppu_ram_read(palette_address + color);
+				ppu_screen_background[p][real_scanline] = color;
+				pixbuf_add(p, real_scanline, idx);
+			}
+			else
+			{
+				int idx = ppu_ram_read(0x3F00);
+				pixbuf_add(p, real_scanline, idx);
+			}
+			p++;
+		}
+		x_in_tile = 0;
+	}
+
+	x_in_tile = 8;
+	nametable_id ^= 1;
+	for (uint8_t tile_x = 0; tile_x <= dx; tile_x++) {
+		int tile_index = ppu_ram_read(ppu_select_nametable_address(nametable_id) + tile_x + tile_y_offset);
+		uint16_t tile_address = ppu_background_pattern_table_address() + 16 * tile_index;
+
+		uint8_t l = ppu_ram_read(tile_address + y_in_tile);
+		uint8_t h = ppu_ram_read(tile_address + y_in_tile + 8);
+
+		if (tile_x == dx)
+		{
+			if (ppu.fine_x) {
+				x_in_tile = ppu.fine_x;
+			}
+			else {
+				break;
+			}
+		}
+
+		for (uint8_t x = 0; x < x_in_tile; x++) {
+			uint8_t color = ppu_l_h_addition_table[l][h][x];
+			if (color != 0) {
+				uint16_t attribute_address = ppu_select_nametable_address(nametable_id) + attr_y_base + (tile_x >> 2);
+				uint8_t palette = (ppu_ram_read(attribute_address) >> (attr_y_shift | (tile_x & 2))) & 3;
+
+				uint16_t palette_address = 0x3F00 + (palette << 2);
+				int idx = ppu_ram_read(palette_address + color);
+				ppu_screen_background[p][real_scanline] = color;
+				pixbuf_add(p, real_scanline, idx);
+			}
+			else
+			{
+				int idx = ppu_ram_read(0x3F00);
+				pixbuf_add(p, real_scanline, idx);
+			}
+			p++;
+		}
+	}
+}
+
 void ppu_draw_background_scanline() {
   //uint8_t pixel_shift = 7 - ppu.fine_x;
   uint8_t p = 0;  //用来计时真的屏幕坐标，p范围一定是0-255，一定要初始化
@@ -435,6 +523,10 @@ void ppu_draw_background_scanline() {
     //int tile_index = ppu_ram_read(ppu_base_nametable_address(nametable_id) + tile_x + tile_y_offset);
     //int tile_index = ppu_ram_read(ppu_base_nametable_address() + tile_x + tile_y_offset);
     int tile_index = ppu_ram_read(ppu_select_nametable_address(nametable_id) + tile_x + tile_y_offset);
+    if(real_scanline == 32)
+    {
+      //printf("%d   %d   %d\n",tile_x, real_scanline, tile_index);
+    }
     if(tile_x == 0 && dy==8){
     //printf("tile_index = %d,   tile_x = %d,  tile_y_offset = %d   %x\n", tile_index,  tile_x, tile_y_offset,  ppu_select_nametable_address(nametable_id) + tile_x + tile_y_offset);
     //tile_index=36;
@@ -496,7 +588,13 @@ void ppu_draw_background_scanline() {
         int idx = ppu_ram_read(palette_address + color);
         //ppu_screen_background[(tile_x << 3) + x][ppu.scanline] = color;
         ppu_screen_background[p][real_scanline] = color;
-        pixbuf_add(p, real_scanline, idx);  //添加到屏幕坐标，真实坐标x，y分别是p, real_scaline
+        if(real_scanline==32)
+        {
+          //printf("%d  %d \n", real_scanline, nametable_id);
+          //pixbuf_add(p, real_scanline, idx);
+          //idx=34;
+        }  //添加到屏幕坐标，真实坐标x，y分别是p, real_scaline
+          pixbuf_add(p, real_scanline, idx);
 
       } else {
         int idx = ppu_ram_read(0x3f00);
@@ -510,6 +608,7 @@ void ppu_draw_background_scanline() {
 
   x_in_tile = 8;
   nametable_id ^= 1;
+  
   //注意这里一定要<= dx, 因为fine_x精细分割分割的就是这个瓦片
   for (uint8_t tile_x = 0; tile_x <= dx; tile_x++) {
     //int tile_index = ppu_ram_read(ppu_base_nametable_address(nametable_id) + tile_x + tile_y_offset);
@@ -567,14 +666,11 @@ void ppu_draw_background_scanline() {
     }
     //x_in_tile = 8;
   }
+  
 }
 
 void prepare_sprite_scanline(uint8_t scanline) {
   //0行不会有精灵
-  if(scanline == 0)
-  {
-    return;
-  }
   uint8_t sprite_count = 0;
   //uint8_t sprite_size = ppu_sprite_height() ? 16 : 8;
   uint8_t sprite_size = ppu_sprite_height();
@@ -585,7 +681,7 @@ void prepare_sprite_scanline(uint8_t scanline) {
   uint16_t tile_address = 0;
 
   //uint8_t target_scanline = ppu.scanline + 1;
-  uint8_t target_scanline = scanline;
+  uint8_t target_scanline = scanline + 1;
 
   for (n = 0; n < 0x100; n += 4) {
     uint8_t sprite_x = ppu.sprite_ram[n + 3];
@@ -716,10 +812,6 @@ void prepare_sprite_scanline(uint8_t scanline) {
 
 void ppu_draw_sprite_scanline(uint8_t scanline){
   //0行不会有精灵
-  if(scanline == 0)
-  {
-    return;
-  }
   //if (ppu_show_sprites() && ppu.scanline > 0 && ppu.scanline < 240 && ppu.scanline == sprite_scanline && sprite_num != 0) {
   if (ppu_show_sprites() && sprite_num != 0) {
     int background_id = ppu_ram_read(0x3f00);
@@ -748,7 +840,7 @@ void ppu_draw_sprite_scanline(uint8_t scanline){
           }
           */
           //判断精灵0 hit触发, 一定是精灵0，而不是精灵1之类的，因为精灵1也可能在0号位置
-          if ((ppu.mask.MASK_b || ppu.mask.MASK_s) && !ppu.status.STATUS_S && sprite_tem[i].id == 0 && ppu_screen_background[sprite_tem[i].x + j][ppu.scanline] != 0) {
+          if (ppu.mask.MASK_s && !ppu.status.STATUS_S && sprite_tem[i].id == 0 && ppu_screen_background[x][y] != 0) {
             ppu_set_sprite_0_hit(true);
             //ppu_sprite_hit_occured = true;
           }
@@ -758,7 +850,7 @@ void ppu_draw_sprite_scanline(uint8_t scanline){
     //sprite_num = 0; //重置每一行的精灵数量
   }
 
-  sprite_num = 0;  //重置每一行的精灵数量
+  //sprite_num = 0;  //重置每一行的精灵数量
 }
 
 void ppu_sprram_write(uint8_t data) {
@@ -782,6 +874,7 @@ void ppu_init() {
   ppu.t.reg = 0;
   ppu.status.ppu_status |= 0xa0;
   ppu.w=0;
+  ppu.fine_x = 0;
   //ppu.ppudata = 0;
   //ppu_2007_first_read = true;
 
@@ -846,7 +939,7 @@ void fill_line(uint8_t scanline) {
   }
 }
 
-void ppu_draw_background_scanlinee(bool mirror) {
+void ppu_draw_background_scanlineee(bool mirror) {
   int tile_x;
   //nes是256列像素，240行高，一个标准tile是8*8像素，所以这里就是32 = 256/8
   //但是这里需要注意的是精灵是有大精灵是由两个tile组成，但背景都是由一个个tile组成不存在特殊情况

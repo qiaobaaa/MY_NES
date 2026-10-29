@@ -121,6 +121,7 @@ typedef struct PPU {
 extern PPU ppu;
 extern uint16_t screen[256 * 242];
 extern uint8_t sprite_num;
+extern uint8_t sprite_scanline;  //精灵实际在第几行显示；
 
 uint8_t ppu_register_read(uint16_t address);
 void ppu_register_write(uint16_t address, uint8_t data);
@@ -129,6 +130,7 @@ void ppu_cycle();
 void ppu_run(int cycles);
 
 void ppu_draw_background_scanline();
+void ppu_draw_background_scanlinee(uint8_t scanline);
 void ppu_draw_sprite_scanline(uint8_t scanline);
 void prepare_sprite_scanline(uint8_t scanline);
 
@@ -143,7 +145,7 @@ void pixbuf_addd(uint16_t x);
 
 void fill_line(uint8_t scanline);
 
-void ppu_draw_background_scanlinee(bool mirror);
+void ppu_draw_background_scanlineee(bool mirror);
 
 const uint16_t palette_rgb565[64] = {
     0x8410, // RGB567(0x80,0x80,0x80)
