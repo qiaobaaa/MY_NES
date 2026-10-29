@@ -81,22 +81,14 @@ static const MapperVTable mapper_000_vtable = {
 
 // ========== 构造函数 ==========
 
-Mapper000* mapper_000_create(Cartridge* cart, uint8_t prg_banks, uint8_t chr_banks) {
+Mapper000* mapper_000_create(/*Cartridge* cart,*/ uint8_t prg_banks, uint8_t chr_banks) {
     Mapper000* m = (Mapper000*)malloc(sizeof(Mapper000));
     if (!m) return NULL;
 
     // 设置共享的 vtable
     m->base.vtable = &mapper_000_vtable;
-    m->base.cart = cart;
+    //m->base.cart = cart;
     m->base.prg_banks = prg_banks;
-    m->base.chr_banks = chr_banks;
-
-    return m;
-}
-
-void mapper_000_destroy(Mapper000* mapper) {
-    free(mapper);
-}
     m->base.chr_banks = chr_banks;
 
     return m;
