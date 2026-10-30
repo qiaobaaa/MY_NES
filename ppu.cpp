@@ -14,8 +14,8 @@ typedef struct sprite {
 } SPRITE;
 
 SPRITE sprite_tem[8];
-uint8_t sprite_num = 0;       //这一行显示几个精灵
-uint8_t sprite_scanline = 0;  //精灵实际在第几行显示；
+//uint8_t sprite_num = 0;       //这一行显示几个精灵
+//uint8_t sprite_scanline = 0;  //精灵实际在第几行显示；
 //uint8_t ram[0x4000];  // PPU可以看见的16Kb内部 VRAM
 //uint8_t sprite_ram[0x100];
 
@@ -420,7 +420,7 @@ void ppu_run(int cycles) {
 }
 */
 
-void ppu_draw_background_scanlinee(uint8_t scanline)
+void ppu_draw_background_scanlinee()
 {
 	uint8_t p = 0;
 	const uint8_t dx = ppu.v.coarse_x;
@@ -434,8 +434,8 @@ void ppu_draw_background_scanlinee(uint8_t scanline)
 	uint8_t y_in_tile = ppu.v.fine_y;
 	uint8_t x_in_tile = ppu.fine_x;
 
-	//uint8_t real_scanline = (dy << 3) + y_in_tile;
-  uint8_t real_scanline = scanline;
+	uint8_t real_scanline = (dy << 3) + y_in_tile;
+  //uint8_t real_scanline = scanline;
 
 	for (uint8_t tile_x = dx; tile_x < 32; tile_x++)
 	{
@@ -716,7 +716,7 @@ void prepare_sprite_scanline(uint8_t scanline) {
     uint8_t palette_attribute = ppu.sprite_ram[n + 2] & 0x3;
     uint16_t palette_address = 0x3F10 + (palette_attribute << 2);
 
-    sprite_num++;
+    ppu.sprite_num++;
     sprite_tem[s_idx].x = sprite_x;
     sprite_tem[s_idx].id = n / 4;
     if (sprite_size == 8) {
@@ -807,19 +807,19 @@ void prepare_sprite_scanline(uint8_t scanline) {
       }
     }
   }
-  sprite_scanline = target_scanline;
+  ppu.sprite_scanline = target_scanline;
 }
 
 void ppu_draw_sprite_scanline(uint8_t scanline){
   //0行不会有精灵
   //if (ppu_show_sprites() && ppu.scanline > 0 && ppu.scanline < 240 && ppu.scanline == sprite_scanline && sprite_num != 0) {
-  if (ppu_show_sprites() && sprite_num != 0) {
+  if (ppu_show_sprites() && ppu.sprite_num != 0) {
     int background_id = ppu_ram_read(0x3f00);
 	  uint16_t background_color = palette_rgb565[background_id];
 	  uint16_t x = 0;
 	  uint16_t y = 0;
     //for (int i = 0; i < sprite_num; i++)  //添加这一行要显示的精灵
-    for (int i = sprite_num - 1; i >= 0; i--)
+    for (int i = ppu.sprite_num - 1; i >= 0; i--)
     {
       for (int j = 0; j < 8; j++) {
 			  bool sprite_background = sprite_tem[i].is_background;
@@ -877,7 +877,8 @@ void ppu_init() {
   ppu.fine_x = 0;
   //ppu.ppudata = 0;
   //ppu_2007_first_read = true;
-
+  ppu.sprite_num = 0;
+  ppu.sprite_scanline = 0;
   //ppu.ready = false;
   /*
     int l, h, x;

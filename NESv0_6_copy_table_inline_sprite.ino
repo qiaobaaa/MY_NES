@@ -91,12 +91,14 @@ void loop() {
   //File romFile = SD_MMC.open("/gongfu.nes", FILE_READ);
   //File romFile = SD_MMC.open("/gongfuz.nes", FILE_READ);
   //File romFile = SD_MMC.open("/jingang.nes", FILE_READ);
-  File romFile = SD_MMC.open("/super.nes", FILE_READ);
+  //File romFile = SD_MMC.open("/super.nes", FILE_READ);
   //File romFile = SD_MMC.open("/70.nes", FILE_READ);
   //File romFile = SD_MMC.open("/7100.nes", FILE_READ);
   //File romFile = SD_MMC.open("/tanke.nes", FILE_READ);
   //File romFile = SD_MMC.open("/Championship Lode Runner.nes", FILE_READ);
   //File romFile = SD_MMC.open("/0262.nes", FILE_READ);
+  //马戏团中文版.nes
+  File romFile = SD_MMC.open("/马戏团中文版.nes", FILE_READ);
   //zhadanren.nes
   //Championship Lode Runner (J
   //Bomberman.nes
@@ -182,7 +184,7 @@ void nes_init() {
   joypadd.mask = 0;
   joypadd.offset = 0;
   joypadd.joypad = 0;
-  sprite_num = 0;
+  //sprite_num = 0;
   memory_init(cart.prg_rom, cart.prg_rom_size);
 
   // 将 CHR ROM 装入 PPU 内存
@@ -264,7 +266,7 @@ void emu_run() {
     ppu.scanline++;
     button();
     // ═══ 262 行统一循环（含可见 + vblank + pre - render）═══
-    for (int i = 0; i < 262; i++) {
+    for (int scanline = 0; scanline < 262; scanline++) {
       //1. 计算本行 CPU ticks（分数累加）
       int ticks = 113;
       rem += 2;
@@ -278,26 +280,26 @@ void emu_run() {
       //}
       ppu.scanline++;
       //2. 可见行(0~239) 才渲染
-      if (i < 240) {
+      if (scanline < 240) {
         //if (ppu.mask.MASK_s) {
           //prepare_sprite_scanline(i);
         //}
 
         if (ppu.mask.MASK_b) {
-          ppu_draw_background_scanline();
+          ppu_draw_background_scanlinee();
           //ppu_draw_background_scanlinee(false);
           //ppu_draw_background_scanlinee(true);
         } else {
           //printf("hahahhah  %d\n", i);
-          fill_line(i);
+          fill_line(scanline);
         }
         
-        if (ppu.mask.MASK_s && sprite_num != 0 && i == sprite_scanline && i!=0) {
-          ppu_draw_sprite_scanline(i);
+        if (ppu.mask.MASK_s && ppu.sprite_num != 0 && scanline == ppu.sprite_scanline && scanline!=0) {
+          ppu_draw_sprite_scanline(scanline);
         }
-         sprite_num = 0; 
+         ppu.sprite_num = 0; 
          if (ppu.mask.MASK_s) {
-          prepare_sprite_scanline(i);
+          prepare_sprite_scanline(scanline);
         }
         //# 3. CPU 执行 — 前半段(dot 0~254)
         //cpu_execute(nes, nes.timing.line_split);  //# 85,前半段固定为85
@@ -338,7 +340,7 @@ void emu_run() {
         cpu_run(ticks - 85);
         //sprite_num = 0;
       } else {
-        if (i == 240) {
+        if (scanline == 240) {
           ppu.status.STATUS_V = 1;  //# VBlank 开始  Set VBlank flag (241 line)
           if (ppu.ctrl.CTRL_V) {
             cpu.irq_nmi = 1;
@@ -348,7 +350,7 @@ void emu_run() {
           //nes->nes_mapper.mapper_vsync(nes);
         }
 
-        if (i == 261) {
+        if (scanline == 261) {
           ppu.status.ppu_status = 0;  // Clear:VBlank,Sprite 0,Overflow
           ppu.scanline = -1;
           //printf("BG palette: %d\n", ppu.ram[0x3F00]);
@@ -356,7 +358,7 @@ void emu_run() {
 
         //cpu_execute(nes, ticks);
         cpu_run(ticks);
-        if ((ppu.mask.MASK_b || ppu.mask.MASK_s) && i == 261) {
+        if ((ppu.mask.MASK_b || ppu.mask.MASK_s) && scanline == 261) {
           // Dot 257 copies horizontal scroll bits, then dots 280-304 copy vertical bits.
           // At line granularity this is equivalent to syncing the full VRAM address.
           // https://www.nesdev.org/wiki/PPU_scrolling#During_dots_280_to_304_of_the_pre-render_scanline_(end_of_vblank)
@@ -373,7 +375,7 @@ void emu_run() {
     gfx->draw16bitRGBBitmap(32, 0, screen, 256, 240);
     start = micros() - start;
     //printf("cpu time = %u\n",s);
-    //printf("all time = %u\n", start);
+    printf("all time = %u\n", start);
     //printf("666\n");
     //nes_frame(nes);  //# 输入 / 退出检查
   }

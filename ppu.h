@@ -116,12 +116,15 @@ typedef struct PPU {
     //uint16_t ppuscroll;  // 2005: PPU 滚动位置寄存器，WRITE x2
     uint8_t ppuscroll_x, ppuscroll_y;  // 将 PPUSCROLL 寄存器分为 X 和 Y 两个方向
     bool scroll_received_x;
+
+    uint8_t sprite_num;
+    uint8_t sprite_scanline;  //精灵实际在第几行显示；
 } PPU;
 
 extern PPU ppu;
 extern uint16_t screen[256 * 242];
-extern uint8_t sprite_num;
-extern uint8_t sprite_scanline;  //精灵实际在第几行显示；
+//extern uint8_t sprite_num;
+//extern uint8_t sprite_scanline;  //精灵实际在第几行显示；
 
 uint8_t ppu_register_read(uint16_t address);
 void ppu_register_write(uint16_t address, uint8_t data);
@@ -130,7 +133,7 @@ void ppu_cycle();
 void ppu_run(int cycles);
 
 void ppu_draw_background_scanline();
-void ppu_draw_background_scanlinee(uint8_t scanline);
+void ppu_draw_background_scanlinee();
 void ppu_draw_sprite_scanline(uint8_t scanline);
 void prepare_sprite_scanline(uint8_t scanline);
 
