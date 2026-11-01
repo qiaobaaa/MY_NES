@@ -275,6 +275,7 @@ static inline void cpu_addressing_absolute() {
  * 缩写: a,x
  * 使用寄存器 X 的直接变址寻址. 16 位地址做为基地址, 与寄存器 X 的内容相加
  */
+ /*
 static inline void cpu_addressing_absolute_x() {
     op_address = memory_read_word(cpu.pc) + cpu.x;
     op_value = memory_read_byte(op_address);
@@ -286,11 +287,25 @@ static inline void cpu_addressing_absolute_x() {
         additional_cycles = 0;
     }
 }
+*/
+//修改版使用base
+static inline void cpu_addressing_absolute_x() {
+    uint16_t base = memory_read_word(cpu.pc);   // 新增：保存 base
+    op_address = base + cpu.x;                  // 改：用 base
+    op_value = memory_read_byte(op_address);
+    cpu.pc += 2;
+    if ((op_address >> 8) != (base >> 8)) {    // 改：用 base 比较
+        additional_cycles = 1;
+    } else {
+        additional_cycles = 0;
+    }
+}
 
 /* absolute, Y-indexed (3 字节)
  * 缩写: a,y
  * 使用寄存器 Y 的直接变址寻址. 16 位地址做为基地址, 与寄存器 Y 的内容相加
  */
+ /*
 static inline void cpu_addressing_absolute_y() {
     op_address = (memory_read_word(cpu.pc) + cpu.y) & 0xffff;
     op_value = memory_read_byte(op_address);
@@ -302,11 +317,24 @@ static inline void cpu_addressing_absolute_y() {
         additional_cycles = 0;
     }
 }
-
+*/
+//修改版使用base
+static inline void cpu_addressing_absolute_y() {
+    uint16_t base = memory_read_word(cpu.pc);   // 新增
+    op_address = (base + cpu.y) & 0xffff;       // 改
+    op_value = memory_read_byte(op_address);
+    cpu.pc += 2;
+    if ((op_address >> 8) != (base >> 8)) {    // 改
+        additional_cycles = 1;
+    } else {
+        additional_cycles = 0;
+    }
+}
 /* relative (2 字节)
  * 缩写: label
  * 相对寻址. 用于条件转移指令. 指令第二字节为偏移量, 可正可负.
  */
+ /*
 static inline void cpu_addressing_relative() {
     op_address = memory_read_byte(cpu.pc);
     cpu.pc++;
@@ -319,7 +347,15 @@ static inline void cpu_addressing_relative() {
         additional_cycles = 0;
     }
 }
+*/
 
+static inline void cpu_addressing_relative() {
+    op_address = memory_read_byte(cpu.pc);
+    cpu.pc++;
+    if (op_address & 0x80) { op_address -= 0x100; }
+    op_address += cpu.pc;
+    // additional_cycles 由分支 handler 在 taken 时设置
+}
 /* indirect (3 字节)
  * 缩写: (a)
  * 间接寻址. 对应地址内存单元中的数做为地址.
@@ -356,6 +392,7 @@ static inline void cpu_addressing_indirect_x() {
  * 缩写: (d),y
  * 后变址 Y 间接寻址. 对操作数中的零页地址先做一次间接寻址, 得到 16 位地址, 再与 Y 相加, 对相加后得到的地址进行直接寻址.
  */
+ /*
 static inline void cpu_addressing_indirect_y() {
     uint8_t arg_addr = memory_read_byte(cpu.pc);
     op_address = (((memory_read_byte((arg_addr + 1) & 0xff) << 8) | memory_read_byte(arg_addr)) + cpu.y) & 0xffff;
@@ -368,6 +405,21 @@ static inline void cpu_addressing_indirect_y() {
         additional_cycles = 0;
     }
 }
+*/
+//修改版
+static inline void cpu_addressing_indirect_y() {
+    uint8_t arg_addr = memory_read_byte(cpu.pc);
+    uint16_t base = ((memory_read_byte((arg_addr + 1) & 0xff) << 8) | memory_read_byte(arg_addr));
+    op_address = (base + cpu.y) & 0xffff;
+    op_value = memory_read_byte(op_address);
+    cpu.pc++;
+    if ((op_address >> 8) != (base >> 8)) {    // 改
+        additional_cycles = 1;
+    } else {
+        additional_cycles = 0;
+    }
+}
+
 
 /*store  专用寻址（不读取目标地址，避免 PPU $2007 幽灵读取）     **************/
 static inline void cpu_addressing_zeropage_store() {
@@ -536,7 +588,7 @@ static inline void cpu_sbc() {
 }
 
 /* Branching ******/
-
+/*
 static inline void cpu_bmi() { if (cpu.p & FLAG_NEGATIVE) { cpu.pc = op_address; } }
 static inline void cpu_bcs() { if (cpu.p & FLAG_CARRY) { cpu.pc = op_address; } }
 static inline void cpu_beq() { if (cpu.p & FLAG_ZERO) { cpu.pc = op_address; } }
@@ -546,7 +598,16 @@ static inline void cpu_bpl() { if (!(cpu.p & FLAG_NEGATIVE)) { cpu.pc = op_addre
 static inline void cpu_bcc() { if (!(cpu.p & FLAG_CARRY)) { cpu.pc = op_address; } }
 static inline void cpu_bne() { if (!(cpu.p & FLAG_ZERO)) { cpu.pc = op_address; } }
 static inline void cpu_bvc() { if (!(cpu.p & FLAG_OVERFLOW)) { cpu.pc = op_address; } }
+*/
+static inline void cpu_bmi() { if (cpu.p & FLAG_NEGATIVE)     { additional_cycles = 1; if ((op_address >> 8) != (cpu.pc >> 8)) additional_cycles++; cpu.pc = op_address; } }
+static inline void cpu_bcs() { if (cpu.p & FLAG_CARRY)        { additional_cycles = 1; if ((op_address >> 8) != (cpu.pc >> 8)) additional_cycles++; cpu.pc = op_address; } }
+static inline void cpu_beq() { if (cpu.p & FLAG_ZERO)         { additional_cycles = 1; if ((op_address >> 8) != (cpu.pc >> 8)) additional_cycles++; cpu.pc = op_address; } }
+static inline void cpu_bvs() { if (cpu.p & FLAG_OVERFLOW)     { additional_cycles = 1; if ((op_address >> 8) != (cpu.pc >> 8)) additional_cycles++; cpu.pc = op_address; } }
 
+static inline void cpu_bpl() { if (!(cpu.p & FLAG_NEGATIVE))  { additional_cycles = 1; if ((op_address >> 8) != (cpu.pc >> 8)) additional_cycles++; cpu.pc = op_address; } }
+static inline void cpu_bcc() { if (!(cpu.p & FLAG_CARRY))     { additional_cycles = 1; if ((op_address >> 8) != (cpu.pc >> 8)) additional_cycles++; cpu.pc = op_address; } }
+static inline void cpu_bne() { if (!(cpu.p & FLAG_ZERO))      { additional_cycles = 1; if ((op_address >> 8) != (cpu.pc >> 8)) additional_cycles++; cpu.pc = op_address; } }
+static inline void cpu_bvc() { if (!(cpu.p & FLAG_OVERFLOW))  { additional_cycles = 1; if ((op_address >> 8) != (cpu.pc >> 8)) additional_cycles++; cpu.pc = op_address; } }
 /* Comapre ******/
 
 static inline void cpu_bit() {
@@ -640,11 +701,20 @@ static inline void cpu_rts() { cpu.pc = cpu_stack_pop_word() + 1; }
 static inline void cpu_rti() { cpu.p = cpu_stack_pop_byte() | FLAG_UNUSED; cpu.pc = cpu_stack_pop_word(); }
 static inline void cpu_jmp() { cpu.pc = op_address; }
 static inline void cpu_jsr() { cpu_stack_push_word(cpu.pc - 1); cpu.pc = op_address; }
+/*
 static inline void cpu_brk() {
     cpu_stack_push_word(cpu.pc - 1);
     cpu_stack_push_byte(cpu.p);
     cpu.p |= FLAG_UNUSED | FLAG_BREAK;
     cpu.pc = memory_read_word(0xfffe); // NMI 中断
+}
+*/
+static inline void cpu_brk() {
+    cpu_stack_push_word(cpu.pc + 1);  // PC已经+1了，再+1 = BRK+2
+    cpu.B = 1;                        // 先设B
+    cpu_stack_push_byte(cpu.p);       // 再压P（此时P含B=1）
+    cpu.I = 1;                        // 设I
+    cpu.pc = memory_read_word(0xfffe);
 }
 
 /* Transfer ******/
@@ -1026,7 +1096,7 @@ void cpu_init_table(void) {
     opcode_table[0xA4] = (Instruction){ cpu_ldy_zp,     3 };
     opcode_table[0xA5] = (Instruction){ cpu_lda_zp,     3 };
     opcode_table[0xA6] = (Instruction){ cpu_ldx_zp,     3 };
-    opcode_table[0xA8] = (Instruction){ cpu_tay_imp,    3 };
+    opcode_table[0xA8] = (Instruction){ cpu_tay_imp,    2 };
     opcode_table[0xA9] = (Instruction){ cpu_lda_imm,    2 };
     opcode_table[0xAA] = (Instruction){ cpu_tax_imp,    2 };
     opcode_table[0xAC] = (Instruction){ cpu_ldy_abs,    4 };
