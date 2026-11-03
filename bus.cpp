@@ -8,10 +8,15 @@ int prg_rom_size;
 
 uint8_t interal_ram[0x0800];  // 0000 ~ 07FF
 uint8_t save_ram[0x2000];     // 6000 ~ 7FFF
+uint8_t cpu_prg_rom[0x8000];
 
 void memory_init(uint8_t *prg_rom, int prg_rom_length) {
     prg_rom_ptr = prg_rom;
     prg_rom_size = prg_rom_length;
+    if(prg_rom_size>0x8000)
+    {
+      prg_rom_size = 0x8000;
+    }
 }
 /*
 uint8_t memory_read_byte(uint16_t address) {

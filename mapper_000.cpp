@@ -65,6 +65,9 @@ static void irq_clear(void* self) {
 static void scanline(void* self) {
 }
 
+static void register_write(void* self, uint16_t addr, uint8_t data){
+    
+}
 // ========== vtable 定义（共享的） ==========
 
 static const MapperVTable mapper_000_vtable = {
@@ -77,11 +80,12 @@ static const MapperVTable mapper_000_vtable = {
 .irq_state = irq_state,
 .irq_clear = irq_clear,
 .scanline = scanline,
+.register_write = register_write,
 };
 
 // ========== 构造函数 ==========
 
-Mapper000* mapper_000_create(/*Cartridge* cart,*/ uint8_t prg_banks, uint8_t chr_banks) {
+Mapper000* mapper_000_create(Cartridge* cart, uint8_t prg_banks, uint8_t chr_banks) {
     Mapper000* m = (Mapper000*)malloc(sizeof(Mapper000));
     if (!m) return NULL;
 
@@ -90,7 +94,10 @@ Mapper000* mapper_000_create(/*Cartridge* cart,*/ uint8_t prg_banks, uint8_t chr
     //m->base.cart = cart;
     m->base.prg_banks = prg_banks;
     m->base.chr_banks = chr_banks;
-
+    m->base.cart = cart;
+    printf("哈哈哈哈   %d    %d\n",cart->prg_rom_size , cart->prg_rom_size);
+    ppu_copy(0x0000, cart->chr_rom, 0x2000);
+    memcpy(cpu_prg_rom, cart->prg_rom, cart->prg_rom_size);
     return m;
 }
 

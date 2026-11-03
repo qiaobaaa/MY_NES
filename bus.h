@@ -7,7 +7,9 @@ extern uint8_t* prg_rom_ptr;
 extern int prg_rom_size;
 extern uint8_t interal_ram[0x0800];
 extern uint8_t save_ram[0x2000];
+extern uint8_t cpu_prg_rom[0x8000];
 
+extern Cartridge cart;
 
 void memory_init(uint8_t* prg_rom, int prg_rom_length);
 //uint8_t memory_read_byte(uint16_t address);
@@ -39,7 +41,7 @@ static inline uint8_t memory_read_byte(uint16_t address) {
             return save_ram[address - 0x6000];
             //return interal_ram[address & 0x1FFF];
         default:                       // PRG ROM
-            return prg_rom_ptr[(address - 0x8000) % prg_rom_size];
+            return cpu_prg_rom[(address - 0x8000) % prg_rom_size];
     }
 }
 
@@ -89,7 +91,8 @@ static inline void memory_write_byte(uint16_t address, uint8_t data) {
             //interal_ram[address & 0x1FFF] = data;
             break;
         default:                       // PRG ROM
-            prg_rom_ptr[(address - 0x8000) % prg_rom_size] = data;
+            //prg_rom_ptr[(address - 0x8000) % prg_rom_size] = data;
+            cart.mapper->vtable->register_write(cart.mapper, address, data);
     }
 }
 

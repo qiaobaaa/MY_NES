@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "cartridge.h"
+#include "ppu.h"
 
 #define MAPPER_COUNT 7 // 项目中有 7 种 Mapper (0,1,2,3,4,66)
 
@@ -30,6 +31,7 @@ typedef MirrorMode(mapper_mirror_fn)(void* mapper);
 typedef bool (mapper_irq_state_fn)(void* mapper);
 typedef void (mapper_irq_clear_fn)(void* mapper);
 typedef void (mapper_scanline_fn)(void* mapper);
+typedef void (mapper_register_write_fn)(void* mapper, uint16_t addr, uint8_t data);
 
 // 虚函数表
 typedef struct MapperVTable {
@@ -42,6 +44,7 @@ typedef struct MapperVTable {
 	mapper_irq_state_fn* irq_state;
 	mapper_irq_clear_fn* irq_clear;
 	mapper_scanline_fn* scanline;
+	mapper_register_write_fn* register_write;
 } MapperVTable;
 
 // 基础 Mapper 结构体
@@ -87,4 +90,8 @@ static inline void mapper_irq_clear(Mapper* mapper) {
 
 static inline void mapper_scanline(Mapper* mapper) {
 	mapper->vtable->scanline(mapper);
+}
+
+static inline void mapper_register_write(Mapper* mapper, uint16_t addr, uint8_t data) {
+	mapper->vtable->register_write(mapper, addr, data);
 }

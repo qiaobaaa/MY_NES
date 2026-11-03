@@ -7,9 +7,10 @@
 bool ppu_sprite_hit_occured = false;
 //uint8_t ppu_screen_background[264][248];
 uint8_t ppu_screen_background[256];
+#define SPRITE_TRANSPARENT 0x0001   //0x8000
 
 typedef struct sprite {
-  uint8_t idx[8];  //精灵的每个像素颜色索引
+  uint16_t idx[8];  //精灵的每个像素颜色索引
   uint8_t x;       //精灵的起始x坐标
   uint8_t id;      //实际是第几个精灵
   bool is_background;
@@ -197,6 +198,7 @@ void ppu_ram_write(uint16_t address, uint8_t data) {
   uint16_t addr = address & (uint16_t)0x3FFF;
   //pattern table区域，不存在镜像直接读取
   if (addr >= 0x0000 && addr <= 0x1FFF) {
+    //printf("hahahhaha\n");
     ppu.ram[addr] = data;
   }  //位于镜像区，必需进行处理不然读写不统一
   else if (addr >= 0x2000 && addr <= 0x3EFF) {
@@ -436,6 +438,10 @@ void ppu_draw_background_scanlinee(uint8_t scanline) {
   uint8_t x_in_tile = ppu.fine_x;
 
   uint8_t real_scanline = (dy << 3) + y_in_tile;
+  if (real_scanline >= 240) return;
+  uint16_t* screen_row = screen + (uint16_t)real_scanline * 256;   //以指针来表示screen的增加，避免其中的计算
+  
+  uint8_t attr_byte = 0;                       // 进函数先读一次当前 
   //uint8_t real_scanline = scanline;
 if (ppu.v.coarse_y >= 4 && ppu.v.coarse_y <= 6) {
     //printf("SL=%d real=%d cx=%d fx=%d cy=%d fy=%d\n",scanline, real_scanline,ppu.v.coarse_x, ppu.fine_x,ppu.v.coarse_y, ppu.v.fine_y);
@@ -447,11 +453,20 @@ if (ppu.v.coarse_y >= 4 && ppu.v.coarse_y <= 6) {
     uint8_t l = ppu_ram_read(tile_address + y_in_tile);
     uint8_t h = ppu_ram_read(tile_address + y_in_tile + 8);
 
+     // ===== tile 级：每 4 个 tile 才重读属性字节 =====
+    if (tile_x == dx || (tile_x & 3) == 0)
+	{
+        //attr_byte = ppu.ram[ppu_select_nametable_address(nametable_id) + attr_y_base + (tile_x >> 2)];
+		attr_byte = ppu_ram_read(ppu_select_nametable_address(nametable_id)+ attr_y_base + (tile_x >> 2));
+	}
+    const uint16_t* pal = bg_pal_cache[(attr_byte >> (attr_y_shift | (tile_x & 2))) & 3];
+		
+
     for (uint8_t x = x_in_tile; x < 8; x++) {
       uint8_t color = ppu_l_h_addition_table[l][h][x];
       //if (color != 0) {
-        uint16_t attribute_address = ppu_select_nametable_address(nametable_id) + attr_y_base + (tile_x >> 2);
-        uint8_t palette = (ppu_ram_read(attribute_address) >> (attr_y_shift | (tile_x & 2))) & 3;
+        //uint16_t attribute_address = ppu_select_nametable_address(nametable_id) + attr_y_base + (tile_x >> 2);
+        //uint8_t palette = (ppu_ram_read(attribute_address) >> (attr_y_shift | (tile_x & 2))) & 3;
 
         //uint16_t palette_address = 0x3F00 + (palette << 2);          ...........
         //int idx = ppu_ram_read(palette_address + color);                   ...............
@@ -459,9 +474,9 @@ if (ppu.v.coarse_y >= 4 && ppu.v.coarse_y <= 6) {
         ppu_screen_background[p] = color;
         //printf(".......... %d   %d\n",palette_rgb565[idx], bg_pal_cache[palette][color]);
         //pixbuf_add(p, real_scanline, idx);   ...  
-          screen[p + real_scanline * 256] = bg_pal_cache[palette][color];
-        
-      
+          //screen[p + real_scanline * 256] = bg_pal_cache[palette][color];
+        //screen_row[p] = bg_pal_cache[palette][color];       //直接利用指针进行一个位置能大量减少读取
+      screen_row[p] = pal[color];
         //int idx = ppu_ram_read(0x3F00);
         //pixbuf_add(p, real_scanline, idx);
         //screen[p + real_scanline * 256] = bg_pal_cache[palette][color];
@@ -479,7 +494,15 @@ if (ppu.v.coarse_y >= 4 && ppu.v.coarse_y <= 6) {
 
     uint8_t l = ppu_ram_read(tile_address + y_in_tile);
     uint8_t h = ppu_ram_read(tile_address + y_in_tile + 8);
-
+    
+	// ===== tile 级：每 4 个 tile 才重读属性字节 =====
+    if (tile_x == dx || (tile_x & 3) == 0)
+	{
+        //attr_byte = ppu.ram[ppu_select_nametable_address(nametable_id) + attr_y_base + (tile_x >> 2)];
+		attr_byte = ppu_ram_read(ppu_select_nametable_address(nametable_id)+ attr_y_base + (tile_x >> 2));
+	}
+    const uint16_t* pal = bg_pal_cache[(attr_byte >> (attr_y_shift | (tile_x & 2))) & 3];
+	
     if (tile_x == dx) {
       if (ppu.fine_x) {
         x_in_tile = ppu.fine_x;
@@ -492,8 +515,8 @@ if (ppu.v.coarse_y >= 4 && ppu.v.coarse_y <= 6) {
       uint8_t color = ppu_l_h_addition_table[l][h][x];
       
       //if (color != 0) {
-        uint16_t attribute_address = ppu_select_nametable_address(nametable_id) + attr_y_base + (tile_x >> 2);
-        uint8_t palette = (ppu_ram_read(attribute_address) >> (attr_y_shift | (tile_x & 2))) & 3;
+        //uint16_t attribute_address = ppu_select_nametable_address(nametable_id) + attr_y_base + (tile_x >> 2);
+        //uint8_t palette = (ppu_ram_read(attribute_address) >> (attr_y_shift | (tile_x & 2))) & 3;
 
         //uint16_t palette_address = 0x3F00 + (palette << 2);          ...........
         //int idx = ppu_ram_read(palette_address + color);                   ...............
@@ -501,7 +524,9 @@ if (ppu.v.coarse_y >= 4 && ppu.v.coarse_y <= 6) {
         ppu_screen_background[p] = color;
         //printf(".......... %d   %d\n",palette_rgb565[idx], bg_pal_cache[palette][color]);
         //pixbuf_add(p, real_scanline, idx);   ...
-        screen[p + real_scanline * 256] = bg_pal_cache[palette][color];
+        //screen[p + real_scanline * 256] = bg_pal_cache[palette][color];
+		//screen_row[p] = bg_pal_cache[palette][color];       //直接利用指针进行一个位置能大量减少读取
+		screen_row[p] = pal[color];
       //} else {
         //int idx = ppu_ram_read(0x3F00);
         //pixbuf_add(p, real_scanline, idx);
@@ -716,11 +741,14 @@ void prepare_sprite_scanline(uint8_t scanline) {
     uint8_t dy = target_scanline - sprite_y;  // 计算相对偏移
 
     uint8_t palette_attribute = ppu.sprite_ram[n + 2] & 0x3;
-    uint16_t palette_address = 0x3F10 + (palette_attribute << 2);
+    //uint16_t palette_address = 0x3F10 + (palette_attribute << 2);
 
     ppu.sprite_num++;
     sprite_tem[s_idx].x = sprite_x;
     sprite_tem[s_idx].id = n / 4;
+	
+	sprite_tem[s_idx].is_background = (ppu.sprite_ram[n + 2] & 0x20) != 0;         //直接在外面防止对于背景的判断  @@@@@@
+	const uint16_t* spal = sp_pal_cache[palette_attribute];                //@@@@@@
     if (sprite_size == 8) {
       tile_address = ppu_sprite_pattern_table_address() + 16 * ppu.sprite_ram[n + 1];
       //int y_in_tile = ppu.scanline & 0x7;
@@ -733,11 +761,14 @@ void prepare_sprite_scanline(uint8_t scanline) {
       for (x = 0; x < 8; x++) {
         //确定使用颜色在调色板中的索引
         int color = hflip ? ppu_l_h_addition_flip_table[l][h][x] : ppu_l_h_addition_table[l][h][x];
+		sprite_tem[s_idx].idx[x] = color ? spal[color] : SPRITE_TRANSPARENT;
         // Color 0 is transparent
+		/*
         int screen_x = sprite_x + x;
         if (color != 0) {
           //int screen_x = sprite_x + x;
-          int idx = ppu_ram_read(palette_address + color);
+          //int idx = ppu_ram_read(palette_address + color);
+		  uint16_t idx= sp_pal_cache[palette_attribute][color];   //这类存的就是实际颜色，不再是索引
 
           if (ppu.sprite_ram[n + 2] & 0x20) {  // 位于背景之后
             sprite_tem[s_idx].idx[x] = idx;    //在背景后添为0
@@ -747,8 +778,9 @@ void prepare_sprite_scanline(uint8_t scanline) {
             sprite_tem[s_idx].is_background = false;
           }
         } else {
-          sprite_tem[s_idx].idx[x] = 65;  //表示颜色是0，所以索引用了-1
+          sprite_tem[s_idx].idx[x] = 65;  //表示颜色是0，所以索引用了-1  
         }
+		*/
       }
     } else  //16模式
     {
@@ -788,11 +820,14 @@ void prepare_sprite_scanline(uint8_t scanline) {
       for (x = 0; x < 8; x++) {
         //确定使用颜色在调色板中的索引
         int color = hflip ? ppu_l_h_addition_flip_table[l][h][x] : ppu_l_h_addition_table[l][h][x];
+		sprite_tem[s_idx].idx[x] = color ? spal[color] : SPRITE_TRANSPARENT;
         // Color 0 is transparent
+		/*
         int screen_x = sprite_x + x;
         if (color != 0) {
           //int screen_x = sprite_x + x;
-          int idx = ppu_ram_read(palette_address + color);
+          //int idx = ppu_ram_read(palette_address + color);
+		  uint16_t idx= sp_pal_cache[palette_attribute][color];   //这类存的就是实际颜色，不再是索引
 
           if (ppu.sprite_ram[n + 2] & 0x20) {  // 位于背景之后
                                                //sprite_tem[s_idx].idx[x] = 66;     //在背景后添为0
@@ -806,6 +841,7 @@ void prepare_sprite_scanline(uint8_t scanline) {
         } else {
           sprite_tem[s_idx].idx[x] = 65;  //表示颜色是0，所以索引用了-1
         }
+		*/
       }
     }
   }
@@ -816,25 +852,36 @@ void ppu_draw_sprite_scanline(uint8_t scanline) {
   //0行不会有精灵
   //if (ppu_show_sprites() && ppu.scanline > 0 && ppu.scanline < 240 && ppu.scanline == sprite_scanline && sprite_num != 0) {
   if (ppu_show_sprites() && ppu.sprite_num != 0) {
-    int background_id = ppu_ram_read(0x3f00);
-    uint16_t background_color = palette_rgb565[background_id];
+    //int background_id = ppu_ram_read(0x3f00);
+    //uint16_t background_color = palette_rgb565[background_id];
+	uint16_t background_color = bg_pal_cache[0][0];
+	uint16_t* screen_row = screen + (uint16_t)scanline * 256;
+// 每行一次：hit 总闸门 + 左8px裁剪合并条件（原 bg&&sp 的分配律化简）
+    bool hit_armed = !ppu.ppu_sprite_hit_occured && ppu.mask.MASK_b&& ppu.mask.MASK_s && !ppu.status.STATUS_S;
+    bool left_ok = ppu.mask.MASK_m && ppu.mask.MASK_M;   // true=左边8px不裁剪
+
     uint16_t x = 0;
-    uint16_t y = 0;
+    //uint16_t y = 0;
     //for (int i = 0; i < sprite_num; i++)  //添加这一行要显示的精灵
     for (int i = ppu.sprite_num - 1; i >= 0; i--) {
+       bool sprite_background = sprite_tem[i].is_background; //@@@@@@@@@@
+       bool check_hit = hit_armed && (sprite_tem[i].id == 0);           // 每精灵一次
+       uint8_t sx = sprite_tem[i].x;
       for (int j = 0; j < 8; j++) {
-        bool sprite_background = sprite_tem[i].is_background;
-        uint8_t color_idx = sprite_tem[i].idx[j];
-        x = sprite_tem[i].x + j;
+        //bool sprite_background = sprite_tem[i].is_background;
+        uint16_t color_idx = sprite_tem[i].idx[j];
+        x = sx + j;
+        if (color_idx == SPRITE_TRANSPARENT) continue; 
         if(x>255)
         {
           //printf("%d\n",x);
           continue;
         }
-        y = scanline;
-        if (color_idx != 65) {
-          if (!sprite_background || screen[x + y * 256] == background_color) {
-            pixbuf_add(x, y, color_idx);
+        //y = scanline;
+        //if (color_idx != 65) {
+          if (!sprite_background || screen_row[x] == background_color) {
+            //pixbuf_add(x, y, color_idx);
+			       screen_row[x] = color_idx;  //由于前面已经做了调整这里存的直接就是rgb565的颜色数据
           }
           /*
           if (!sprite_background) {
@@ -845,20 +892,21 @@ void ppu_draw_sprite_scanline(uint8_t scanline) {
             pixbuf_add(x, y, color_idx);
           }
           */
-          if(ppu.mask.MASK_m==0||ppu.mask.MASK_M==0){
-          printf("...........%d    %d  \n",ppu.mask.MASK_m, ppu.mask.MASK_M);}
-          bool bg = (x>=8) || ppu.mask.MASK_m;
-          bool sp = (x>=8) || ppu.mask.MASK_M;
+          //if(ppu.mask.MASK_m==0||ppu.mask.MASK_M==0){
+          //printf("...........%d    %d  \n",ppu.mask.MASK_m, ppu.mask.MASK_M);}
+          //bool bg = (x>=8) || ppu.mask.MASK_m;
+          //bool sp = (x>=8) || ppu.mask.MASK_M;
           //判断精灵0 hit触发, 一定是精灵0，而不是精灵1之类的，因为精灵1也可能在0号位置
           //if (ppu.mask.MASK_s && !ppu.status.STATUS_S && sprite_tem[i].id == 0 && ppu_screen_background[x][y] != 0) {
-          if (!ppu.ppu_sprite_hit_occured&&x !=255 && bg && sp && ppu.mask.MASK_b && ppu.mask.MASK_s && !ppu.status.STATUS_S && sprite_tem[i].id == 0 && ppu_screen_background[x] != 0) {
+          //if (!ppu.ppu_sprite_hit_occured&&x !=255 && bg && sp && ppu.mask.MASK_b && ppu.mask.MASK_s && !ppu.status.STATUS_S && sprite_tem[i].id == 0 && ppu_screen_background[x] != 0) {
             //ppu_set_sprite_0_hit(true);
+          if (check_hit && x != 255 && (x >= 8 || left_ok)&& ppu_screen_background[x] != 0) {
             ppu.ppu_sprite_hit_occured = true;
             ppu.ppu_count = x;
+            check_hit = false; 
             //ppu.status.STATUS_S = 1;
             //printf("%d %d %d %d\n", scanline, x, ppu.v.coarse_x, ppu.fine_x);
           }
-        }
       }
     }
     //sprite_num = 0; //重置每一行的精灵数量
@@ -950,9 +998,17 @@ static inline void pixbuf_add(uint16_t x, uint16_t y, uint8_t idx) {
 }
 
 void fill_line(uint8_t scanline) {
+	/*
   int idx = ppu_ram_read(0x3f00);
   for (int i = 0; i < 256; i++) {
     pixbuf_add(i, scanline, idx);
+  }
+  */
+  uint16_t* row = screen + scanline*256; 
+  uint16_t c = bg_pal_cache[0][0];
+  for (int i = 0; i < 256; i++) {
+    //pixbuf_add(i, scanline, idx);
+	row[i] = c;
   }
 }
 

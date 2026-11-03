@@ -84,7 +84,7 @@ void cpu_reset() {
     memory_write_byte(0x4015, 0);  // APU was silenced
     cpu.pc = memory_read_word(0xfffc);
 }
-
+/*
 static inline void cpu_checknz(uint8_t n)
 {
     if((n >> 7) & 1) { cpu.p |= FLAG_NEGATIVE; } else { cpu.p &= ~FLAG_NEGATIVE; }
@@ -95,6 +95,27 @@ static inline void cpu_modify_flag(uint8_t flag, int value) {
     if(value) { cpu.p |= flag; }
     else      { cpu.p &= ~flag; }
 }
+*/
+static inline __attribute__((always_inline)) void cpu_checknz(uint8_t n) {  
+    // 1. Negative Flag:   
+    // 直接提取 n 的第 7 位，并将其与 FLAG_NEGATIVE 的掩码对齐。  
+    // 如果 FLAG_NEGATIVE 本身就是 0x80，那么 (n & FLAG_NEGATIVE) 就足够了。  
+    // 如果 FLAG_NEGATIVE 是其他位，则需要：((n >> 7) & 1) * FLAG_NEGATIVE  
+    cpu.p = (cpu.p & ~FLAG_NEGATIVE) | (n & FLAG_NEGATIVE);
+
+    // 2. Zero Flag:  
+    // 使用 !n。在 C++ 中，!n 的结果是布尔值 (true/1 或 false/0)。  
+    // 强制转为 uint8_t 后，再乘以 flag，实现“有则加，无则零”的效果。  
+    cpu.p = (cpu.p & ~FLAG_ZERO) | ((uint8_t)!n * FLAG_ZERO);  
+}
+
+static inline __attribute__((always_inline)) void cpu_modify_flag(uint8_t flag, int value) {  
+    // 优化：利用 !!value 将任何非零值统一转为 1，再转为 0  
+    // 这样就完全去掉了 if/else 判断  
+    cpu.p = (cpu.p & ~flag) | ((uint8_t)!!value * flag);  
+}  
+
+
 /* 检查并设置 Zero Flag 与 Negative Flag */
 /*
 static inline void cpu_checknz(uint8_t n)
