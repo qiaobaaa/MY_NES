@@ -324,7 +324,7 @@ void emu_run() {
         //}
 
         if (ppu.mask.MASK_b) {
-          ppu_draw_background_scanlinee(scanline);
+         ppu_draw_background_scanlinee(scanline);
           //ppu_draw_background_scanlinee(false);
           //ppu_draw_background_scanlinee(true);
         } else {

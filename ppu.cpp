@@ -439,7 +439,10 @@ void ppu_draw_background_scanlinee(uint8_t scanline) {
 
   uint8_t real_scanline = (dy << 3) + y_in_tile;
   if (real_scanline >= 240) return;
-  uint16_t* screen_row = screen + (uint16_t)real_scanline * 256;   //以指针来表示screen的增加，避免其中的计算
+  //uint16_t* screen_row = screen + (uint16_t)real_scanline * 256;   //以指针来表示screen的增加，避免其中的计算
+ uint16_t* screen_row = screen + (uint16_t)scanline * 256;  
+  
+
   
   uint8_t attr_byte = 0;                       // 进函数先读一次当前 
   //uint8_t real_scanline = scanline;
@@ -863,7 +866,8 @@ void ppu_draw_sprite_scanline(uint8_t scanline) {
     uint16_t x = 0;
     //uint16_t y = 0;
     //for (int i = 0; i < sprite_num; i++)  //添加这一行要显示的精灵
-    for (int i = ppu.sprite_num - 1; i >= 0; i--) {
+  for (int i = ppu.sprite_num - 1; i >= 0; i--) {
+    //for (int i = 0; i < ppu.sprite_num; i++) {
        bool sprite_background = sprite_tem[i].is_background; //@@@@@@@@@@
        bool check_hit = hit_armed && (sprite_tem[i].id == 0);           // 每精灵一次
        uint8_t sx = sprite_tem[i].x;
@@ -880,9 +884,11 @@ void ppu_draw_sprite_scanline(uint8_t scanline) {
         //y = scanline;
         //if (color_idx != 65) {
           if (!sprite_background || screen_row[x] == background_color) {
+          //if ( 1) {
             //pixbuf_add(x, y, color_idx);
 			       screen_row[x] = color_idx;  //由于前面已经做了调整这里存的直接就是rgb565的颜色数据
           }
+        //}
           /*
           if (!sprite_background) {
             pixbuf_add(x, y, color_idx);

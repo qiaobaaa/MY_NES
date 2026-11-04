@@ -1,6 +1,8 @@
 #include "mapper_002.h"
 #include <stdlib.h>
 
+int dirty = -1;
+
 static bool cpu_read(void* self, uint16_t addr, uint32_t* mapped_addr, uint8_t* data) {
     Mapper002* m = (Mapper002*)self;
 
@@ -65,7 +67,12 @@ static void scanline(void* self) {
 
 static void register_write(void* self, uint16_t addr, uint8_t data){
     uint8_t prg_bank_num = data & 0xF;  //提取低位字节
-    memcpy(cpu_prg_rom, cart.prg_rom + (prg_bank_num * 0x4000), 0x4000);
+    if(dirty!=prg_bank_num)
+    {
+        dirty=prg_bank_num;
+        memcpy(cpu_prg_rom, cart.prg_rom + (dirty * 0x4000), 0x4000);
+    }
+    //memcpy(cpu_prg_rom, cart.prg_rom + (prg_bank_num * 0x4000), 0x4000);
     //printf("hahha\n");
 }
 
