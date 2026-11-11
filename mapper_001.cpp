@@ -140,6 +140,7 @@ static void control(Mapper001* m, uint8_t result) {
 */
 
 static void chr_bank0(Mapper001* m, uint8_t result) {
+  if(!chr_rom_flag) return;
   uint8_t chr_num = result & 0x0F;
   if (m->C)
   {
@@ -152,6 +153,7 @@ static void chr_bank0(Mapper001* m, uint8_t result) {
 }
 
 static void chr_bank1(Mapper001* m, uint8_t result) {
+   if(!chr_rom_flag) return;
    if (m->C == 0)
    {
      return;
@@ -273,10 +275,10 @@ static void register_write(void* self, uint16_t addr, uint8_t data) {
         control(m, result);
         break;
       case 1:  //CHR bank 0 (internal, $A000-$BFFF)
-        //chr_bank0(m, result);
+        chr_bank0(m, result);
         break;
       case 2:  //CHR bank 1 (internal, $C000-$DFFF)
-        //chr_bank1(m, result);
+        chr_bank1(m, result);
         break;
       case 3:  //PRG bank (internal, $E000-$FFFF)
         prg_bank(m, result);
@@ -364,7 +366,7 @@ Mapper001* mapper_001_create(Cartridge* cart, uint8_t prg_banks, uint8_t chr_ban
   //上电默认初始把第一个chr给ppu，块级别是8k
   //memcpy(ppu.ram, cart->chr_rom, 0x2000);
   
-  //ppu_copy(0x0000, cart->chr_rom, 0x2000);
+   if(chr_rom_flag) ppu_copy(0x0000, cart->chr_rom, 0x2000);
   //mapper2最主要的就是切换prg，默认先把0给0x8000-BFFF,之后来回切换
   //0xC000-0xFFFF,一定是最后一个bank
   printf("...............%d   %p  %p  %p\n", prg_banks,  pprg_rom[0],pprg_rom[1], cart->prg_rom);

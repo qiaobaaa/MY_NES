@@ -5,7 +5,7 @@
 #include "ppu.h"
 
 #define MAPPER_COUNT 7 // 项目中有 7 种 Mapper (0,1,2,3,4,66)
-
+extern bool chr_rom_flag;
 // ========== 具体 Mapper 头文件包含 ==========
 //#include "mapper_000.h"
 

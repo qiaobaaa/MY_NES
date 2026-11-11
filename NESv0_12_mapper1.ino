@@ -60,6 +60,7 @@ PPU ppu;
 Cartridge cart;
 nes_joypad joypadd;
 uint16_t screen[256 * 242];
+bool chr_rom_flag;
 // =============================================================================
 // 全局变量
 // =============================================================================
@@ -155,6 +156,8 @@ void loadNESGame(String filePath) {
 
     cart.prg_rom_size = cart.header[4] * 16 * 1024;
     cart.chr_rom_size = cart.header[5] * 8 * 1024;
+    
+    chr_rom_flag = !!cart.chr_rom_size;       //高效，常用于追求极致简洁的底层开发。
 
     printf("prg_banks = %d, chr_banks = %d, mirror = %d, mapper_num = %d\n", cart.prg_banks, cart.chr_banks, mirror, mapper_num);
     printf("prg_rom_size = %d, chr_rom_size = %d\n", cart.prg_rom_size, cart.chr_rom_size);
@@ -166,7 +169,7 @@ void loadNESGame(String filePath) {
       if (cart.prg_rom == NULL /*|| cart.chr_rom == NULL*/) {
         printf("ERR_MEMORY_ALLOCATE_is null  %d  %d\n", cart.prg_rom_size, cart.chr_rom_size);
         if (cart.prg_rom) heap_caps_free(cart.prg_rom);
-        if (cart.chr_rom) heap_caps_free(cart.chr_rom);
+        //if (cart.chr_rom) heap_caps_free(cart.chr_rom);
         romFile.close();
         return;
       }
@@ -174,25 +177,25 @@ void loadNESGame(String filePath) {
       if (romFile.read(cart.prg_rom, cart.prg_rom_size) != (size_t)cart.prg_rom_size) {
         printf("ERR_PRG_ROM_LOAD_FAILED\n");
         heap_caps_free(cart.prg_rom);
-        heap_caps_free(cart.chr_rom);
+        //heap_caps_free(cart.chr_rom);
         romFile.close();
         return;
       }
     }
 
     if (cart.chr_rom_size != 0) {
-      cart.chr_rom = (uint8_t *)heap_caps_malloc(cart.chr_rom_size, MALLOC_CAP_SPIRAM);
+       cart.chr_rom = (uint8_t *)heap_caps_malloc(cart.chr_rom_size, MALLOC_CAP_SPIRAM);
       //检查空指针
       if (cart.chr_rom == NULL) {
         printf("ERR_MEMORY_ALLOCATE_is null  %d  %d\n", cart.prg_rom_size, cart.chr_rom_size);
-        if (cart.prg_rom) heap_caps_free(cart.prg_rom);
+        //if (cart.prg_rom) heap_caps_free(cart.prg_rom);
         if (cart.chr_rom) heap_caps_free(cart.chr_rom);
         romFile.close();
         return;
       }
       if (romFile.read(cart.chr_rom, cart.chr_rom_size) != (size_t)cart.chr_rom_size) {
         printf("ERR_CHR_ROM_LOAD_FAILED\n");
-        heap_caps_free(cart.prg_rom);
+        //heap_caps_free(cart.prg_rom);
         heap_caps_free(cart.chr_rom);
         romFile.close();
         return;
