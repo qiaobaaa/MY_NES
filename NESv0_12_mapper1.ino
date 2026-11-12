@@ -19,6 +19,7 @@
 #include "mapper_001.h"
 #include "mapper_002.h"
 #include "mapper_003.h"
+#include "mapper_004.h"
 #include "cartridge.h"
 #include "io.h"
 // =============================================================================
@@ -214,6 +215,8 @@ void loadNESGame(String filePath) {
         break;
       case 3:
         cart.mapper = (Mapper *)mapper_003_create(&cart, cart.header[4], cart.header[5]);
+      case 4:
+        cart.mapper = (Mapper *)mapper_004_create(&cart, cart.header[4], cart.header[5]);
       default:
         break;
     }

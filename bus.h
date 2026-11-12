@@ -12,6 +12,7 @@ extern uint8_t cpu_prg_rom[0x8000];
 extern Cartridge cart;
 extern uint8_t *pprg_rom[2];
 
+
 void memory_init(uint8_t* prg_rom, int prg_rom_length);
 //uint8_t memory_read_byte(uint16_t address);
 //uint16_t memory_read_word(uint16_t address);
